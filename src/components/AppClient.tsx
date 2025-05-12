@@ -20,13 +20,14 @@ export interface SymmetrySettings {
 
 export interface AnimationSettings {
   isPulsing: boolean;
-  pulseSpeed: number;
-  pulseIntensity: number;
+  pulseSpeed: number; // Affects frequency
+  pulseDisplayRatio: number; // 0 to 1, ratio of time visible vs invisible
   isScaling: boolean;
-  scaleSpeed: number;
-  scaleIntensity: number; // Range 0-1, represents percentage change
+  scaleSpeed: number; // Affects frequency
+  scaleIntensity: number; // 0 to 1, max scale change percentage (e.g., 0.1 = 10% smaller/larger)
   isSpinning: boolean;
-  spinSpeed: number; // Degrees per second
+  spinSpeed: number; // Degrees per second (positive = CW, negative = CCW)
+  spinDirectionChangeFrequency: number; // How often (in seconds) the direction might change, 0 = never changes
 }
 
 export interface DrawingTools {
@@ -37,6 +38,7 @@ export interface DrawingTools {
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
+  const [pathHistory, setPathHistory] = useState<Path[][]>([]); // Store previous states
   const [symmetry, setSymmetry] = useState<SymmetrySettings>({
     mirrorX: false,
     mirrorY: false,
@@ -44,13 +46,14 @@ export default function AppClient() {
   });
   const [animation, setAnimation] = useState<AnimationSettings>({
     isPulsing: false,
-    pulseSpeed: 5, // Arbitrary speed unit
-    pulseIntensity: 5, // Arbitrary intensity unit
+    pulseSpeed: 5,
+    pulseDisplayRatio: 0.5, // Default to 50% visible, 50% invisible cycle
     isScaling: false,
-    scaleSpeed: 2, // Arbitrary speed unit
+    scaleSpeed: 2,
     scaleIntensity: 0.1, // 10% scale change
     isSpinning: false,
-    spinSpeed: 30, // 30 degrees per second
+    spinSpeed: 30,
+    spinDirectionChangeFrequency: 0, // Default: direction doesn't change
   });
   const [tools, setTools] = useState<DrawingTools>({
     strokeColor: '#000000', // Default to black
@@ -77,12 +80,24 @@ export default function AppClient() {
   }, [theme, systemTheme]); // Re-run when theme or systemTheme changes
 
   const handlePathAdd = useCallback((newPath: Path) => {
+     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state *before* adding
     setPaths((prevPaths) => [...prevPaths, newPath]);
-  }, []);
+  }, [paths]); // Depend on paths to save the correct previous state
 
   const handleClearCanvas = useCallback(() => {
+     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state before clearing
     setPaths([]);
-  }, []);
+  }, [paths]); // Depend on paths to save the correct previous state
+
+  const handleUndo = useCallback(() => {
+    if (pathHistory.length === 0) return; // Nothing to undo
+
+    const previousPaths = pathHistory[pathHistory.length - 1];
+    setPaths(previousPaths);
+    setPathHistory((prevHistory) => prevHistory.slice(0, -1)); // Remove the last saved state
+  }, [pathHistory]);
+
+  const canUndo = pathHistory.length > 0;
 
   const handleSaveDrawing = useCallback(() => {
     if (canvasRef.current) {
@@ -202,6 +217,8 @@ export default function AppClient() {
               onToolsChange={setTools}
               onClear={handleClearCanvas}
               onSave={handleSaveDrawing}
+              onUndo={handleUndo}
+              canUndo={canUndo}
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">

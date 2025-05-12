@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { SymmetrySettings, AnimationSettings, DrawingTools } from "@/components/AppClient";
@@ -18,6 +19,8 @@ interface ControlPanelProps {
   onToolsChange: (settings: DrawingTools) => void;
   onClear: () => void;
   onSave: () => void;
+  onUndo: () => void;
+  canUndo: boolean;
 }
 
 export function ControlPanel({
@@ -28,12 +31,19 @@ export function ControlPanel({
   tools,
   onToolsChange,
   onClear,
-  onSave
+  onSave,
+  onUndo,
+  canUndo,
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col p-4 space-y-6">
-        <ActionToolbar onClear={onClear} onSave={onSave} />
+        <ActionToolbar
+          onClear={onClear}
+          onSave={onSave}
+          onUndo={onUndo}
+          canUndo={canUndo}
+        />
         <Separator />
         <Accordion type="multiple" defaultValue={["symmetry", "drawing-tools", "animation"]} className="w-full">
           <DrawingToolControl tools={tools} onToolsChange={onToolsChange} />
