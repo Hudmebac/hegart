@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Point, Path } from "@/types/drawing";
@@ -9,6 +10,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 export interface SymmetrySettings {
   mirrorX: boolean;
@@ -20,6 +22,11 @@ export interface AnimationSettings {
   isPulsing: boolean;
   pulseSpeed: number;
   pulseIntensity: number;
+  isScaling: boolean;
+  scaleSpeed: number;
+  scaleIntensity: number; // Range 0-1, represents percentage change
+  isSpinning: boolean;
+  spinSpeed: number; // Degrees per second
 }
 
 export interface DrawingTools {
@@ -37,28 +44,37 @@ export default function AppClient() {
   });
   const [animation, setAnimation] = useState<AnimationSettings>({
     isPulsing: false,
-    pulseSpeed: 5,
-    pulseIntensity: 5,
+    pulseSpeed: 5, // Arbitrary speed unit
+    pulseIntensity: 5, // Arbitrary intensity unit
+    isScaling: false,
+    scaleSpeed: 2, // Arbitrary speed unit
+    scaleIntensity: 0.1, // 10% scale change
+    isSpinning: false,
+    spinSpeed: 30, // 30 degrees per second
   });
   const [tools, setTools] = useState<DrawingTools>({
-    strokeColor: '#000000', // Default to black for light mode
+    strokeColor: '#000000', // Default to black
     lineWidth: 5,
     backgroundColor: '#FAFAFA', // Default light mode background
   });
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const { theme, systemTheme } = useTheme();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    // Update strokeColor based on theme
-    const isDarkMode = document.documentElement.classList.contains('dark');
+   useEffect(() => {
+    // Determine the effective theme
+    const currentTheme = theme === 'system' ? systemTheme : theme;
+    const isDarkMode = currentTheme === 'dark';
+
+    // Update strokeColor and backgroundColor based on the effective theme
     setTools(prev => ({
       ...prev,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     }));
-  }, []); // Runs once on mount. For dynamic theme changes, listen to theme changes.
+  }, [theme, systemTheme]); // Re-run when theme or systemTheme changes
 
   const handlePathAdd = useCallback((newPath: Path) => {
     setPaths((prevPaths) => [...prevPaths, newPath]);
@@ -70,13 +86,89 @@ export default function AppClient() {
 
   const handleSaveDrawing = useCallback(() => {
     if (canvasRef.current) {
-      const image = canvasRef.current.toDataURL('image/png');
+      // Create a temporary canvas to draw the final image without animation effects
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      const mainCanvas = canvasRef.current;
+
+      if (!tempCtx) return;
+
+      tempCanvas.width = mainCanvas.width;
+      tempCanvas.height = mainCanvas.height;
+
+      // Draw background
+      tempCtx.fillStyle = tools.backgroundColor;
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Draw paths without animation offsets
+       const drawStaticPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
+          if (path.length < 2) return;
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+          }
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lineWidth; // Use original line width
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke();
+      };
+
+      const drawStaticSymmetricPath = (originalPath: Path) => {
+        const ctx = tempCtx;
+        const canvas = tempCanvas;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
+
+        for (let i = 0; i < numAxes; i++) {
+          const angle = (i * 2 * Math.PI) / numAxes;
+
+          const transformPoint = (p: Point): Point => {
+            let { x, y } = p;
+             if (numAxes > 1) {
+               const translatedX = x - centerX;
+               const translatedY = y - centerY;
+               const rotatedX = translatedX * Math.cos(angle) - translatedY * Math.sin(angle);
+               const rotatedY = translatedX * Math.sin(angle) + translatedY * Math.cos(angle);
+               x = rotatedX + centerX;
+               y = rotatedY + centerY;
+             }
+            return { x, y };
+          };
+
+
+          const baseTransformedPath = originalPath.points.map(transformPoint);
+          drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth);
+
+          if (symmetry.mirrorX) {
+            const mirroredXPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: p.y})).map(transformPoint);
+            drawStaticPath(ctx, mirroredXPath, originalPath.color, originalPath.lineWidth);
+          }
+          if (symmetry.mirrorY) {
+             const mirroredYPath = originalPath.points.map(p => ({x: p.x, y: canvas.height - p.y})).map(transformPoint);
+             drawStaticPath(ctx, mirroredYPath, originalPath.color, originalPath.lineWidth);
+          }
+          if (symmetry.mirrorX && symmetry.mirrorY) {
+              const mirroredXYPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: canvas.height - p.y})).map(transformPoint);
+              drawStaticPath(ctx, mirroredXYPath, originalPath.color, originalPath.lineWidth);
+          }
+        }
+      };
+
+      paths.forEach(path => drawStaticSymmetricPath(path));
+
+
+      // Save the image from the temporary canvas
+      const image = tempCanvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = 'hegart-drawing.png';
       link.href = image;
       link.click();
     }
-  }, []);
+  }, [canvasRef, paths, tools.backgroundColor, symmetry]);
+
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
 
