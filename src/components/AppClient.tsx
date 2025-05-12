@@ -38,12 +38,11 @@ export interface DrawingTools {
 
 export interface ShapeSettings {
   currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
-  // Add other shape-specific settings if needed later
 }
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
-  const [currentPath, setCurrentPath] = useState<Point[]>([]); // Lifted state
+  const [currentPath, setCurrentPath] = useState<Point[]>([]);
   const [pathHistory, setPathHistory] = useState<Path[][]>([]);
   const [symmetry, setSymmetry] = useState<SymmetrySettings>({
     mirrorX: false,
@@ -52,14 +51,14 @@ export default function AppClient() {
   });
   const [animation, setAnimation] = useState<AnimationSettings>({
     isPulsing: false,
-    pulseSpeed: 5, // Controls frequency
-    pulseIntensity: 4, // Controls amplitude (e.g., +/- 4px)
+    pulseSpeed: 5,
+    pulseIntensity: 4,
     isScaling: false,
     scaleSpeed: 2,
-    scaleIntensity: 0.1, // 10% scale change
+    scaleIntensity: 0.1,
     isSpinning: false,
     spinSpeed: 30,
-    spinDirectionChangeFrequency: 5, // Change direction approx every 5 seconds
+    spinDirectionChangeFrequency: 5,
   });
   const [tools, setTools] = useState<DrawingTools>({
     strokeColor: '#000000',
@@ -72,8 +71,8 @@ export default function AppClient() {
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [mainCanvasDimensions, setMainCanvasDimensions] = useState({ width: 800, height: 600 }); // Default values
 
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
@@ -85,16 +84,34 @@ export default function AppClient() {
     }));
   }, [theme, systemTheme]);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const observer = new ResizeObserver(() => {
+        // Ensure width/height are positive before setting
+        if (canvas.width > 0 && canvas.height > 0) {
+          setMainCanvasDimensions({ width: canvas.width, height: canvas.height });
+        }
+      });
+      observer.observe(canvas);
+      // Initial set, if dimensions are already available and positive
+      if (canvas.width > 0 && canvas.height > 0) {
+        setMainCanvasDimensions({ width: canvas.width, height: canvas.height });
+      }
+      return () => observer.disconnect();
+    }
+  }, []); // canvasRef.current might not be available immediately
+
   const handlePathAdd = useCallback((newPath: Path) => {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths((prevPaths) => [...prevPaths, newPath]);
-     setCurrentPath([]); // Clear current path after adding
+     setCurrentPath([]);
   }, [paths]);
 
   const handleClearCanvas = useCallback(() => {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths([]);
-     setCurrentPath([]); // Also clear the current path being drawn
+     setCurrentPath([]);
   }, [paths]);
 
   const handleUndo = useCallback(() => {
@@ -102,7 +119,7 @@ export default function AppClient() {
     const previousPaths = pathHistory[pathHistory.length - 1];
     setPaths(previousPaths);
     setPathHistory((prevHistory) => prevHistory.slice(0, -1));
-    setCurrentPath([]); // Clear current path on undo as well
+    setCurrentPath([]);
   }, [pathHistory]);
 
   const canUndo = pathHistory.length > 0;
@@ -219,26 +236,27 @@ export default function AppClient() {
               onAnimationChange={setAnimation}
               tools={tools}
               onToolsChange={setTools}
-              shapes={shapeSettings} // Pass shapes state
-              onShapesChange={setShapeSettings} // Pass shapes change handler
-              currentPath={currentPath} // Pass current path for preview
+              shapes={shapeSettings}
+              onShapesChange={setShapeSettings}
+              currentPath={currentPath}
               onClear={handleClearCanvas}
               onSave={handleSaveDrawing}
               onUndo={handleUndo}
               canUndo={canUndo}
+              mainCanvasDimensions={mainCanvasDimensions}
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
             <DrawingCanvas
               ref={canvasRef}
               paths={paths}
-              currentPath={currentPath} // Pass current path
-              onCurrentPathChange={setCurrentPath} // Pass handler to update current path
+              currentPath={currentPath}
+              onCurrentPathChange={setCurrentPath}
               onPathAdd={handlePathAdd}
               symmetrySettings={symmetry}
               animationSettings={animation}
               drawingTools={tools}
-              shapeSettings={shapeSettings} // Pass shape settings
+              shapeSettings={shapeSettings}
               backgroundColor={tools.backgroundColor}
             />
           </SidebarInset>

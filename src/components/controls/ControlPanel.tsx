@@ -8,12 +8,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
 import { AnimationControl } from "./AnimationSettings";
 import { DrawingToolControl } from "./DrawingTools";
-import { ShapeControl } from "./ShapeSettings"; // Import ShapeControl
+import { ShapeControl } from "./ShapeSettings";
 import { ActionToolbar } from "./ActionToolbar";
-import { PreviewCanvas } from "../canvas/PreviewCanvas"; // Import PreviewCanvas
+import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
-import { DraftingCompass } from "lucide-react"; // Icon for Preview
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DraftingCompass } from "lucide-react";
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -22,13 +22,14 @@ interface ControlPanelProps {
   onAnimationChange: (settings: AnimationSettings) => void;
   tools: DrawingTools;
   onToolsChange: (settings: DrawingTools) => void;
-  shapes: ShapeSettings; // Add shapes prop
-  onShapesChange: (settings: ShapeSettings) => void; // Add shapes change handler
-  currentPath: Point[]; // Add currentPath prop for preview
+  shapes: ShapeSettings;
+  onShapesChange: (settings: ShapeSettings) => void;
+  currentPath: Point[];
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  mainCanvasDimensions: { width: number, height: number }; // Added prop
 }
 
 export function ControlPanel({
@@ -38,18 +39,18 @@ export function ControlPanel({
   onAnimationChange,
   tools,
   onToolsChange,
-  shapes, // Destructure shapes props
-  onShapesChange, // Destructure shapes props
-  currentPath, // Destructure currentPath
+  shapes,
+  onShapesChange,
+  currentPath,
   onClear,
   onSave,
   onUndo,
   canUndo,
+  mainCanvasDimensions, // Destructure new prop
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col p-4 space-y-6">
-        {/* Preview Section */}
         <Card>
           <CardHeader className="p-3 pb-1">
              <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -62,9 +63,10 @@ export function ControlPanel({
                 <PreviewCanvas
                   currentPath={currentPath}
                   drawingTools={tools}
+                  mainCanvasDimensions={mainCanvasDimensions} // Pass prop
                 />
              </div>
-              <p className="text-xs text-muted-foreground mt-2">Shows your raw stroke before symmetry or animation.</p>
+              <p className="text-xs text-muted-foreground mt-2">Shows your raw stroke. You can pan (drag) and zoom (scroll).</p>
           </CardContent>
         </Card>
 
@@ -79,11 +81,9 @@ export function ControlPanel({
         <Separator />
         <Accordion
           type="multiple"
-          // Expand shapes and tools by default
           defaultValue={["shapes", "drawing-tools", "symmetry", "animation"]}
           className="w-full"
         >
-          {/* Add ShapeControl */}
           <ShapeControl shapes={shapes} onShapesChange={onShapesChange} />
           <DrawingToolControl tools={tools} onToolsChange={onToolsChange} />
           <SymmetryControl symmetry={symmetry} onSymmetryChange={onSymmetryChange} />
