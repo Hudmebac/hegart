@@ -1,3 +1,5 @@
-export default function Home() {
-  return <></>;
+import AppClient from "@/components/AppClient";
+
+export default function HomePage() {
+  return <AppClient />;
 }
