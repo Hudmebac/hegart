@@ -20,14 +20,14 @@ export interface SymmetrySettings {
 
 export interface AnimationSettings {
   isPulsing: boolean;
-  pulseSpeed: number; // Affects frequency
-  pulseDisplayRatio: number; // 0 to 1, ratio of time visible vs invisible
+  pulseSpeed: number;
+  pulseIntensity: number; // Controls line width variation range
   isScaling: boolean;
-  scaleSpeed: number; // Affects frequency
-  scaleIntensity: number; // 0 to 1, max scale change percentage (e.g., 0.1 = 10% smaller/larger)
+  scaleSpeed: number;
+  scaleIntensity: number; // 0 to 1, max scale change percentage
   isSpinning: boolean;
-  spinSpeed: number; // Degrees per second (positive = CW, negative = CCW)
-  spinDirectionChangeFrequency: number; // How often (in seconds) the direction might change, 0 = never changes
+  spinSpeed: number; // Degrees per second
+  spinDirectionChangeFrequency: number; // How often (in seconds) direction might change
 }
 
 export interface DrawingTools {
@@ -36,9 +36,15 @@ export interface DrawingTools {
   backgroundColor: string;
 }
 
+export interface ShapeSettings {
+  currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
+  // Add other shape-specific settings if needed later
+}
+
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
-  const [pathHistory, setPathHistory] = useState<Path[][]>([]); // Store previous states
+  const [currentPath, setCurrentPath] = useState<Point[]>([]); // Lifted state
+  const [pathHistory, setPathHistory] = useState<Path[][]>([]);
   const [symmetry, setSymmetry] = useState<SymmetrySettings>({
     mirrorX: false,
     mirrorY: false,
@@ -46,19 +52,22 @@ export default function AppClient() {
   });
   const [animation, setAnimation] = useState<AnimationSettings>({
     isPulsing: false,
-    pulseSpeed: 5,
-    pulseDisplayRatio: 0.5, // Default to 50% visible, 50% invisible cycle
+    pulseSpeed: 5, // Controls frequency
+    pulseIntensity: 4, // Controls amplitude (e.g., +/- 4px)
     isScaling: false,
     scaleSpeed: 2,
     scaleIntensity: 0.1, // 10% scale change
     isSpinning: false,
     spinSpeed: 30,
-    spinDirectionChangeFrequency: 0, // Default: direction doesn't change
+    spinDirectionChangeFrequency: 5, // Change direction approx every 5 seconds
   });
   const [tools, setTools] = useState<DrawingTools>({
-    strokeColor: '#000000', // Default to black
+    strokeColor: '#000000',
     lineWidth: 5,
-    backgroundColor: '#FAFAFA', // Default light mode background
+    backgroundColor: '#FAFAFA',
+  });
+  const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
+    currentShape: 'freehand',
   });
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -67,41 +76,39 @@ export default function AppClient() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
    useEffect(() => {
-    // Determine the effective theme
     const currentTheme = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentTheme === 'dark';
-
-    // Update strokeColor and backgroundColor based on the effective theme
     setTools(prev => ({
       ...prev,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     }));
-  }, [theme, systemTheme]); // Re-run when theme or systemTheme changes
+  }, [theme, systemTheme]);
 
   const handlePathAdd = useCallback((newPath: Path) => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state *before* adding
-    setPaths((prevPaths) => [...prevPaths, newPath]);
-  }, [paths]); // Depend on paths to save the correct previous state
+     setPathHistory((prevHistory) => [...prevHistory, paths]);
+     setPaths((prevPaths) => [...prevPaths, newPath]);
+     setCurrentPath([]); // Clear current path after adding
+  }, [paths]);
 
   const handleClearCanvas = useCallback(() => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state before clearing
-    setPaths([]);
-  }, [paths]); // Depend on paths to save the correct previous state
+     setPathHistory((prevHistory) => [...prevHistory, paths]);
+     setPaths([]);
+     setCurrentPath([]); // Also clear the current path being drawn
+  }, [paths]);
 
   const handleUndo = useCallback(() => {
-    if (pathHistory.length === 0) return; // Nothing to undo
-
+    if (pathHistory.length === 0) return;
     const previousPaths = pathHistory[pathHistory.length - 1];
     setPaths(previousPaths);
-    setPathHistory((prevHistory) => prevHistory.slice(0, -1)); // Remove the last saved state
+    setPathHistory((prevHistory) => prevHistory.slice(0, -1));
+    setCurrentPath([]); // Clear current path on undo as well
   }, [pathHistory]);
 
   const canUndo = pathHistory.length > 0;
 
   const handleSaveDrawing = useCallback(() => {
     if (canvasRef.current) {
-      // Create a temporary canvas to draw the final image without animation effects
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
       const mainCanvas = canvasRef.current;
@@ -111,11 +118,9 @@ export default function AppClient() {
       tempCanvas.width = mainCanvas.width;
       tempCanvas.height = mainCanvas.height;
 
-      // Draw background
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-      // Draw paths without animation offsets
        const drawStaticPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
           if (path.length < 2) return;
           ctx.beginPath();
@@ -124,7 +129,7 @@ export default function AppClient() {
             ctx.lineTo(path[i].x, path[i].y);
           }
           ctx.strokeStyle = color;
-          ctx.lineWidth = lineWidth; // Use original line width
+          ctx.lineWidth = lineWidth;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.stroke();
@@ -175,7 +180,6 @@ export default function AppClient() {
       paths.forEach(path => drawStaticSymmetricPath(path));
 
 
-      // Save the image from the temporary canvas
       const image = tempCanvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = 'hegart-drawing.png';
@@ -215,6 +219,9 @@ export default function AppClient() {
               onAnimationChange={setAnimation}
               tools={tools}
               onToolsChange={setTools}
+              shapes={shapeSettings} // Pass shapes state
+              onShapesChange={setShapeSettings} // Pass shapes change handler
+              currentPath={currentPath} // Pass current path for preview
               onClear={handleClearCanvas}
               onSave={handleSaveDrawing}
               onUndo={handleUndo}
@@ -225,11 +232,14 @@ export default function AppClient() {
             <DrawingCanvas
               ref={canvasRef}
               paths={paths}
+              currentPath={currentPath} // Pass current path
+              onCurrentPathChange={setCurrentPath} // Pass handler to update current path
               onPathAdd={handlePathAdd}
               symmetrySettings={symmetry}
               animationSettings={animation}
               drawingTools={tools}
-              backgroundColor={tools.backgroundColor} // Pass background color explicitly
+              shapeSettings={shapeSettings} // Pass shape settings
+              backgroundColor={tools.backgroundColor}
             />
           </SidebarInset>
         </div>

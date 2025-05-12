@@ -1,14 +1,19 @@
 
 "use client";
 
-import type { SymmetrySettings, AnimationSettings, DrawingTools } from "@/components/AppClient";
+import type { Point } from "@/types/drawing";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
 import { Accordion } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
 import { AnimationControl } from "./AnimationSettings";
 import { DrawingToolControl } from "./DrawingTools";
+import { ShapeControl } from "./ShapeSettings"; // Import ShapeControl
 import { ActionToolbar } from "./ActionToolbar";
+import { PreviewCanvas } from "../canvas/PreviewCanvas"; // Import PreviewCanvas
 import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Import Card components
+import { DraftingCompass } from "lucide-react"; // Icon for Preview
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -17,6 +22,9 @@ interface ControlPanelProps {
   onAnimationChange: (settings: AnimationSettings) => void;
   tools: DrawingTools;
   onToolsChange: (settings: DrawingTools) => void;
+  shapes: ShapeSettings; // Add shapes prop
+  onShapesChange: (settings: ShapeSettings) => void; // Add shapes change handler
+  currentPath: Point[]; // Add currentPath prop for preview
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
@@ -30,6 +38,9 @@ export function ControlPanel({
   onAnimationChange,
   tools,
   onToolsChange,
+  shapes, // Destructure shapes props
+  onShapesChange, // Destructure shapes props
+  currentPath, // Destructure currentPath
   onClear,
   onSave,
   onUndo,
@@ -38,6 +49,27 @@ export function ControlPanel({
   return (
     <ScrollArea className="h-full">
       <div className="flex flex-col p-4 space-y-6">
+        {/* Preview Section */}
+        <Card>
+          <CardHeader className="p-3 pb-1">
+             <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <DraftingCompass className="h-5 w-5" />
+                Stroke Preview
+             </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 pt-1">
+             <div className="aspect-video w-full bg-muted rounded-md border border-input overflow-hidden">
+                <PreviewCanvas
+                  currentPath={currentPath}
+                  drawingTools={tools}
+                />
+             </div>
+              <p className="text-xs text-muted-foreground mt-2">Shows your raw stroke before symmetry or animation.</p>
+          </CardContent>
+        </Card>
+
+        <Separator />
+
         <ActionToolbar
           onClear={onClear}
           onSave={onSave}
@@ -45,7 +77,14 @@ export function ControlPanel({
           canUndo={canUndo}
         />
         <Separator />
-        <Accordion type="multiple" defaultValue={["symmetry", "drawing-tools", "animation"]} className="w-full">
+        <Accordion
+          type="multiple"
+          // Expand shapes and tools by default
+          defaultValue={["shapes", "drawing-tools", "symmetry", "animation"]}
+          className="w-full"
+        >
+          {/* Add ShapeControl */}
+          <ShapeControl shapes={shapes} onShapesChange={onShapesChange} />
           <DrawingToolControl tools={tools} onToolsChange={onToolsChange} />
           <SymmetryControl symmetry={symmetry} onSymmetryChange={onSymmetryChange} />
           <AnimationControl animation={animation} onAnimationChange={onAnimationChange} />

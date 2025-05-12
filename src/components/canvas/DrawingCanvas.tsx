@@ -2,28 +2,43 @@
 "use client";
 
 import type { Point, Path } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools } from "@/components/AppClient";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { drawShape } from './shapeUtils'; // Import shape drawing utility
 
 interface DrawingCanvasProps {
   paths: Path[];
+  currentPath: Point[]; // Receive current path as prop
+  onCurrentPathChange: (path: Point[]) => void; // Receive handler to update current path
   onPathAdd: (path: Path) => void;
   symmetrySettings: SymmetrySettings;
   animationSettings: AnimationSettings;
   drawingTools: DrawingTools;
+  shapeSettings: ShapeSettings; // Receive shape settings
   backgroundColor: string;
 }
 
 export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
-  ({ paths, onPathAdd, symmetrySettings, animationSettings, drawingTools, backgroundColor }, ref) => {
+  ({
+    paths,
+    currentPath, // Use prop
+    onCurrentPathChange, // Use prop
+    onPathAdd,
+    symmetrySettings,
+    animationSettings,
+    drawingTools,
+    shapeSettings, // Use prop
+    backgroundColor
+  }, ref) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
     useImperativeHandle(ref, () => internalCanvasRef.current!);
 
     const [isDrawing, setIsDrawing] = useState(false);
-    const [currentPath, setCurrentPath] = useState<Point[]>([]);
     const animationFrameId = useRef<number | null>(null);
     const lastAnimationTime = useRef<number>(0);
-    const totalRotation = useRef<number>(0); // Accumulate rotation over time
+    const totalRotation = useRef<number>(0);
+    const spinDirection = useRef<number>(1); // 1 for CW, -1 for CCW
+    const lastSpinDirectionChangeTime = useRef<number>(0);
 
     const getCanvasCoordinates = (event: React.MouseEvent | React.TouchEvent): Point | null => {
       if (!internalCanvasRef.current) return null;
@@ -31,29 +46,26 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const rect = canvas.getBoundingClientRect();
       let x, y;
       if ('touches' in event) {
-         // Use the first touch point
-         if (event.touches.length === 0) return null; // No touch points
+         if (event.touches.length === 0) return null;
          x = event.touches[0].clientX - rect.left;
          y = event.touches[0].clientY - rect.top;
        } else {
          x = event.clientX - rect.left;
          y = event.clientY - rect.top;
        }
-      // Clamp coordinates to stay within canvas bounds
       x = Math.max(0, Math.min(x, canvas.width));
       y = Math.max(0, Math.min(y, canvas.height));
       return { x, y };
     };
 
     const startDrawing = (event: React.MouseEvent | React.TouchEvent) => {
-      // Prevent default touch behavior like scrolling
        if ('touches' in event) {
            event.preventDefault();
        }
       const point = getCanvasCoordinates(event);
       if (!point) return;
       setIsDrawing(true);
-      setCurrentPath([point]);
+      onCurrentPathChange([point]); // Start new path using prop handler
     };
 
     const draw = (event: React.MouseEvent | React.TouchEvent) => {
@@ -63,21 +75,46 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       if (!isDrawing) return;
       const point = getCanvasCoordinates(event);
       if (!point) return;
-      setCurrentPath((prev) => [...prev, point]);
+      // Update current path using prop handler
+      if (shapeSettings.currentShape === 'freehand') {
+          onCurrentPathChange([...currentPath, point]);
+      } else {
+          // For shapes, only update the second point (end point)
+          if (currentPath.length > 0) {
+              onCurrentPathChange([currentPath[0], point]);
+          }
+      }
     };
 
     const finishDrawing = () => {
       if (!isDrawing || currentPath.length === 0) return;
       setIsDrawing(false);
-      onPathAdd({
-        points: currentPath,
-        color: drawingTools.strokeColor,
-        lineWidth: drawingTools.lineWidth,
-      });
-      setCurrentPath([]);
+
+      let finalPathPoints: Point[];
+      if (shapeSettings.currentShape !== 'freehand' && currentPath.length === 2) {
+          // Generate shape points based on start and end points
+          const canvas = internalCanvasRef.current;
+          if (!canvas) return;
+          finalPathPoints = drawShape(shapeSettings.currentShape, currentPath[0], currentPath[1], canvas.width, canvas.height);
+      } else {
+          // Use the drawn points for freehand
+          finalPathPoints = currentPath;
+      }
+
+
+       if (finalPathPoints.length >= 2) { // Only add if path has at least 2 points
+          onPathAdd({
+            points: finalPathPoints,
+            color: drawingTools.strokeColor,
+            lineWidth: drawingTools.lineWidth,
+          });
+       }
+
+      onCurrentPathChange([]); // Clear current path using prop handler
     };
 
-    const drawPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number, currentLineWidthOffset: number = 0) => {
+
+    const drawSinglePath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number, currentLineWidthOffset: number = 0) => {
       if (path.length < 2) return;
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
@@ -85,12 +122,25 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         ctx.lineTo(path[i].x, path[i].y);
       }
       ctx.strokeStyle = color;
-      // Ensure lineWidth doesn't go below 1
       ctx.lineWidth = Math.max(1, lineWidth + currentLineWidthOffset);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
     };
+
+     // Function to draw the temporary shape line while drawing
+      const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
+          if (path.length !== 2) return; // Only draw if start and end points exist
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          ctx.lineTo(path[1].x, path[1].y);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(1, lineWidth * 0.5); // Make preview line thinner
+          ctx.setLineDash([5, 5]); // Make it dashed
+          ctx.stroke();
+          ctx.setLineDash([]); // Reset line dash
+      };
+
 
     const renderCanvas = (time: number = 0) => {
       if (!internalCanvasRef.current) return;
@@ -98,10 +148,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const deltaTime = time - lastAnimationTime.current; // Time since last frame in ms
-      lastAnimationTime.current = time; // Update last time for the next frame
+      const deltaTime = time - lastAnimationTime.current;
+      lastAnimationTime.current = time;
 
-      // Clear canvas
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -110,46 +159,63 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
       // --- Calculate Animation Values ---
       let currentLineWidthOffset = 0;
-      if (animationSettings.isPulsing) {
-        // Sine wave for pulsing line width
-        const pulseCycle = (time / (1000 / (animationSettings.pulseSpeed / 2))) % (2 * Math.PI);
-        currentLineWidthOffset = Math.sin(pulseCycle) * (animationSettings.pulseIntensity / 2);
-      }
+       if (animationSettings.isPulsing) {
+         // Use cosine: starts at max offset, goes to min, then back to max
+         // pulseIntensity controls the range (+/- pulseIntensity)
+         const pulseCycle = (time / (1000 / (animationSettings.pulseSpeed / 2))) % (2 * Math.PI);
+         currentLineWidthOffset = Math.cos(pulseCycle) * animationSettings.pulseIntensity; // Oscillates between +intensity and -intensity
+       }
 
       let currentScaleFactor = 1;
       if (animationSettings.isScaling) {
-         // Sine wave for pulsing scale, oscillating around 1
          const scaleCycle = (time / (1000 / (animationSettings.scaleSpeed / 2))) % (2 * Math.PI);
-         // Intensity controls the amplitude (max deviation from 1)
+         // Scale oscillates between (1 - intensity) and (1 + intensity)
          currentScaleFactor = 1 + Math.sin(scaleCycle) * animationSettings.scaleIntensity;
        }
 
-      if (animationSettings.isSpinning && deltaTime > 0) {
-         const rotationDegreesPerSecond = animationSettings.spinSpeed;
-         const rotationRadiansPerSecond = rotationDegreesPerSecond * (Math.PI / 180);
-         const rotationThisFrame = rotationRadiansPerSecond * (deltaTime / 1000);
-         totalRotation.current += rotationThisFrame;
+       // Spin Animation with Direction Change
+       if (animationSettings.isSpinning && deltaTime > 0) {
+           const now = performance.now();
+           const timeSinceLastChange = (now - lastSpinDirectionChangeTime.current) / 1000; // in seconds
+
+           // Check if direction should change (randomly based on frequency)
+           if (animationSettings.spinDirectionChangeFrequency > 0 && timeSinceLastChange > animationSettings.spinDirectionChangeFrequency) {
+               if (Math.random() < 0.5) { // 50% chance to change direction
+                   spinDirection.current *= -1;
+                   lastSpinDirectionChangeTime.current = now;
+               } else {
+                   // Reset timer even if direction doesn't change, so it checks again later
+                   lastSpinDirectionChangeTime.current = now;
+               }
+           } else if (lastSpinDirectionChangeTime.current === 0) {
+                // Initialize the timer on the first frame
+                lastSpinDirectionChangeTime.current = now;
+           }
+
+
+           const rotationDegreesPerSecond = animationSettings.spinSpeed * spinDirection.current;
+           const rotationRadiansPerSecond = rotationDegreesPerSecond * (Math.PI / 180);
+           const rotationThisFrame = rotationRadiansPerSecond * (deltaTime / 1000);
+           totalRotation.current += rotationThisFrame;
        }
        const currentRotationAngle = totalRotation.current;
        // --- End Calculate Animation Values ---
 
 
-      // --- Apply Global Transformations (Rotation, Scaling) ---
-      ctx.save(); // Save context state before transformations
-      ctx.translate(centerX, centerY); // Move origin to center
-      if (animationSettings.isSpinning) {
-        ctx.rotate(currentRotationAngle);
-      }
-       if (animationSettings.isScaling) {
-         ctx.scale(currentScaleFactor, currentScaleFactor);
-       }
-      ctx.translate(-centerX, -centerY); // Move origin back
-      // --- End Apply Global Transformations ---
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
+      if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
+      ctx.translate(-centerX, -centerY);
 
 
       // --- Draw Content ---
-      const drawSymmetricPath = (originalPathData: Path) => {
-        const { points: originalPath, color, lineWidth } = originalPathData;
+      const drawSymmetricPath = (originalPathData: Path | { points: Point[], color: string, lineWidth: number }, isTemporaryShape = false) => {
+        const { points: originalPoints, color, lineWidth } = originalPathData;
+
+        // Decide which drawing function to use
+        const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
+
         const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
 
         for (let i = 0; i < numAxes; i++) {
@@ -157,7 +223,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
            const transformPoint = (p: Point): Point => {
              let { x, y } = p;
-             // Center -> Rotate -> Uncenter
              if (numAxes > 1) {
                const translatedX = x - centerX;
                const translatedY = y - centerY;
@@ -169,52 +234,53 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
              return { x, y };
            };
 
-          const baseTransformedPath = originalPath.map(transformPoint);
-          drawPath(ctx, baseTransformedPath, color, lineWidth, currentLineWidthOffset);
+          const baseTransformedPath = originalPoints.map(transformPoint);
+          // Pass animation offset only for non-temporary shapes
+          drawFunc(ctx, baseTransformedPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
 
-           // Handle mirroring *after* rotation to mirror the rotated segment
+
            if (symmetrySettings.mirrorX) {
              const mirroredXPath = baseTransformedPath.map(p => ({x: canvas.width - p.x, y: p.y}));
-             drawPath(ctx, mirroredXPath, color, lineWidth, currentLineWidthOffset);
+              drawFunc(ctx, mirroredXPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
            }
            if (symmetrySettings.mirrorY) {
              const mirroredYPath = baseTransformedPath.map(p => ({x: p.x, y: canvas.height - p.y}));
-             drawPath(ctx, mirroredYPath, color, lineWidth, currentLineWidthOffset);
+              drawFunc(ctx, mirroredYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
            }
            if (symmetrySettings.mirrorX && symmetrySettings.mirrorY) {
                const mirroredXYPath = baseTransformedPath.map(p => ({x: canvas.width - p.x, y: canvas.height - p.y}));
-               drawPath(ctx, mirroredXYPath, color, lineWidth, currentLineWidthOffset);
+              drawFunc(ctx, mirroredXYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
            }
         }
       };
 
       paths.forEach(pathData => drawSymmetricPath(pathData));
 
+      // Draw the current path (using prop) being drawn with symmetry
       if (isDrawing && currentPath.length > 0) {
-        // Draw the current path being drawn with symmetry as well
-        drawSymmetricPath({
-          points: currentPath,
-          color: drawingTools.strokeColor,
-          lineWidth: drawingTools.lineWidth,
-        });
+          const isShapePreview = shapeSettings.currentShape !== 'freehand';
+          drawSymmetricPath({
+              points: currentPath,
+              color: drawingTools.strokeColor,
+              lineWidth: drawingTools.lineWidth,
+          }, isShapePreview); // Pass true if it's a shape preview line
       }
       // --- End Draw Content ---
 
-      ctx.restore(); // Restore context state to remove transformations for next frame
+      ctx.restore();
 
-      // Request next frame if any animation is active
       if (animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning) {
         animationFrameId.current = requestAnimationFrame(renderCanvas);
       } else {
-        animationFrameId.current = null; // Stop animation loop if no animations are active
-         // Reset accumulated rotation when spinning stops
+        animationFrameId.current = null;
          if (!animationSettings.isSpinning) {
              totalRotation.current = 0;
+             spinDirection.current = 1; // Reset direction
+             lastSpinDirectionChangeTime.current = 0; // Reset timer
          }
       }
     };
 
-    // Resize observer effect
     useEffect(() => {
       const canvas = internalCanvasRef.current;
       if (!canvas) return;
@@ -224,13 +290,13 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const resizeObserver = new ResizeObserver(() => {
         canvas.width = parent.clientWidth;
         canvas.height = parent.clientHeight;
-        renderCanvas(); // Re-render on resize
+        renderCanvas();
       });
       resizeObserver.observe(parent);
 
       canvas.width = parent.clientWidth;
       canvas.height = parent.clientHeight;
-      renderCanvas(); // Initial render
+      renderCanvas();
 
       return () => {
         resizeObserver.unobserve(parent);
@@ -240,33 +306,29 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]); // Re-run only if background color changes
+    }, [backgroundColor]);
 
-    // Effect to handle drawing updates and animation loop control
      useEffect(() => {
        const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning;
-
-       // Always render at least once when dependencies change
        renderCanvas();
 
        if (shouldAnimate && !animationFrameId.current) {
-         // Start the animation loop if it's not running and should be
-         lastAnimationTime.current = performance.now(); // Reset timer when starting
+         lastAnimationTime.current = performance.now();
          if (!animationSettings.isSpinning) {
-            totalRotation.current = 0; // Reset rotation if spinning isn't active
+            totalRotation.current = 0;
+            spinDirection.current = 1;
+            lastSpinDirectionChangeTime.current = 0;
          }
          animationFrameId.current = requestAnimationFrame(renderCanvas);
        } else if (!shouldAnimate && animationFrameId.current) {
-         // Stop the animation loop if it's running and shouldn't be
          cancelAnimationFrame(animationFrameId.current);
          animationFrameId.current = null;
-         // Render one last time without animation offsets/transformations if needed
-         // This requires resetting temporary animation values before the final render
           totalRotation.current = 0;
-          renderCanvas();
+          spinDirection.current = 1;
+          lastSpinDirectionChangeTime.current = 0;
+          renderCanvas(); // Render final static state
        }
 
-       // Cleanup function to stop animation loop on unmount or before re-running effect
        return () => {
          if (animationFrameId.current) {
            cancelAnimationFrame(animationFrameId.current);
@@ -274,7 +336,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor]);
+     }, [paths, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings]);
 
 
     return (
@@ -283,11 +345,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={finishDrawing}
-        onMouseLeave={finishDrawing}
+        onMouseLeave={finishDrawing} // Finish drawing if mouse leaves canvas
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={finishDrawing}
-        className="h-full w-full touch-none bg-transparent cursor-crosshair" // Added cursor
+        className="h-full w-full touch-none bg-transparent cursor-crosshair"
         data-ai-hint="abstract art"
       />
     );
