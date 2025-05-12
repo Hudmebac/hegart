@@ -40,6 +40,8 @@ export interface ShapeSettings {
   currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
 }
 
+export type PreviewMode = 'stroke' | 'userDrawn';
+
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
@@ -68,6 +70,7 @@ export default function AppClient() {
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
     currentShape: 'freehand',
   });
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn'); // New state for preview mode
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
@@ -89,18 +92,19 @@ export default function AppClient() {
     if (canvas) {
       const observer = new ResizeObserver(() => {
         // Ensure width/height are positive before setting
-        if (canvas.width > 0 && canvas.height > 0) {
-          setMainCanvasDimensions({ width: canvas.width, height: canvas.height });
+        if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+            setMainCanvasDimensions({ width: canvas.clientWidth, height: canvas.clientHeight });
         }
       });
-      observer.observe(canvas);
-      // Initial set, if dimensions are already available and positive
-      if (canvas.width > 0 && canvas.height > 0) {
-        setMainCanvasDimensions({ width: canvas.width, height: canvas.height });
-      }
+       // Use clientWidth/clientHeight for responsive size
+       if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+          setMainCanvasDimensions({ width: canvas.clientWidth, height: canvas.clientHeight });
+       }
+      observer.observe(canvas.parentElement!); // Observe parent for size changes
       return () => observer.disconnect();
     }
-  }, []); // canvasRef.current might not be available immediately
+  }, []);
+
 
   const handlePathAdd = useCallback((newPath: Path) => {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
@@ -132,8 +136,10 @@ export default function AppClient() {
 
       if (!tempCtx) return;
 
-      tempCanvas.width = mainCanvas.width;
-      tempCanvas.height = mainCanvas.height;
+      // Use calculated dimensions for saving to match display
+      tempCanvas.width = mainCanvasDimensions.width;
+      tempCanvas.height = mainCanvasDimensions.height;
+
 
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
@@ -203,7 +209,7 @@ export default function AppClient() {
       link.href = image;
       link.click();
     }
-  }, [canvasRef, paths, tools.backgroundColor, symmetry]);
+  }, [canvasRef, paths, tools.backgroundColor, symmetry, mainCanvasDimensions]);
 
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
@@ -244,21 +250,26 @@ export default function AppClient() {
               onUndo={handleUndo}
               canUndo={canUndo}
               mainCanvasDimensions={mainCanvasDimensions}
+              previewMode={previewMode} // Pass preview mode state
+              onPreviewModeChange={setPreviewMode} // Pass setter
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
-            <DrawingCanvas
-              ref={canvasRef}
-              paths={paths}
-              currentPath={currentPath}
-              onCurrentPathChange={setCurrentPath}
-              onPathAdd={handlePathAdd}
-              symmetrySettings={symmetry}
-              animationSettings={animation}
-              drawingTools={tools}
-              shapeSettings={shapeSettings}
-              backgroundColor={tools.backgroundColor}
-            />
+             {/* Wrap canvas in a div that allows it to shrink */}
+             <div className="relative w-full h-full overflow-hidden">
+                <DrawingCanvas
+                  ref={canvasRef}
+                  paths={paths}
+                  currentPath={currentPath}
+                  onCurrentPathChange={setCurrentPath}
+                  onPathAdd={handlePathAdd}
+                  symmetrySettings={symmetry}
+                  animationSettings={animation}
+                  drawingTools={tools}
+                  shapeSettings={shapeSettings}
+                  backgroundColor={tools.backgroundColor}
+                />
+             </div>
           </SidebarInset>
         </div>
       </div>

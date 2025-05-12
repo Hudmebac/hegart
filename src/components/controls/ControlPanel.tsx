@@ -2,7 +2,7 @@
 "use client";
 
 import type { Point } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, PreviewMode } from "@/components/AppClient"; // Import PreviewMode
 import { Accordion } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
@@ -14,6 +14,8 @@ import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DraftingCompass } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Import RadioGroup components
+import { Label } from "@/components/ui/label"; // Import Label
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -29,7 +31,9 @@ interface ControlPanelProps {
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
-  mainCanvasDimensions: { width: number, height: number }; // Added prop
+  mainCanvasDimensions: { width: number, height: number };
+  previewMode: PreviewMode; // Receive preview mode state
+  onPreviewModeChange: (mode: PreviewMode) => void; // Receive setter
 }
 
 export function ControlPanel({
@@ -46,7 +50,9 @@ export function ControlPanel({
   onSave,
   onUndo,
   canUndo,
-  mainCanvasDimensions, // Destructure new prop
+  mainCanvasDimensions,
+  previewMode, // Destructure new prop
+  onPreviewModeChange, // Destructure new prop
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
@@ -63,10 +69,31 @@ export function ControlPanel({
                 <PreviewCanvas
                   currentPath={currentPath}
                   drawingTools={tools}
-                  mainCanvasDimensions={mainCanvasDimensions} // Pass prop
+                  mainCanvasDimensions={mainCanvasDimensions}
+                  previewMode={previewMode} // Pass previewMode to canvas
                 />
              </div>
-              <p className="text-xs text-muted-foreground mt-2">Shows your raw stroke. You can pan (drag) and zoom (scroll).</p>
+             {/* Radio Group for Preview Mode Selection */}
+             <RadioGroup
+                value={previewMode}
+                onValueChange={(value) => onPreviewModeChange(value as PreviewMode)}
+                className="flex gap-4 mt-2"
+             >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="stroke" id="preview-stroke" />
+                  <Label htmlFor="preview-stroke" className="text-xs font-normal cursor-pointer">Stroke</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="userDrawn" id="preview-userDrawn" />
+                  <Label htmlFor="preview-userDrawn" className="text-xs font-normal cursor-pointer">User Drawn</Label>
+                </div>
+             </RadioGroup>
+             {/* Dynamic Description Text */}
+              <p className="text-xs text-muted-foreground mt-1">
+                {previewMode === 'userDrawn'
+                  ? "Shows your raw stroke. Pan (drag) and zoom (scroll)."
+                  : "Shows the current stroke style."}
+              </p>
           </CardContent>
         </Card>
 
