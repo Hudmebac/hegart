@@ -1,8 +1,8 @@
 
 "use client";
 
-import type { Point } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, PreviewMode } from "@/components/AppClient"; // Import PreviewMode
+import type { Point, Path } from "@/types/drawing";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, PreviewMode } from "@/components/AppClient";
 import { Accordion } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
@@ -14,8 +14,8 @@ import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DraftingCompass } from "lucide-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Import RadioGroup components
-import { Label } from "@/components/ui/label"; // Import Label
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -26,14 +26,15 @@ interface ControlPanelProps {
   onToolsChange: (settings: DrawingTools) => void;
   shapes: ShapeSettings;
   onShapesChange: (settings: ShapeSettings) => void;
-  currentPath: Point[];
+  activePath: Point[]; // Renamed from currentPath for clarity
+  completedPaths: Path[]; // New prop for all completed paths
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
   mainCanvasDimensions: { width: number, height: number };
-  previewMode: PreviewMode; // Receive preview mode state
-  onPreviewModeChange: (mode: PreviewMode) => void; // Receive setter
+  previewMode: PreviewMode;
+  onPreviewModeChange: (mode: PreviewMode) => void;
 }
 
 export function ControlPanel({
@@ -45,14 +46,15 @@ export function ControlPanel({
   onToolsChange,
   shapes,
   onShapesChange,
-  currentPath,
+  activePath, // Use new prop name
+  completedPaths, // Use new prop
   onClear,
   onSave,
   onUndo,
   canUndo,
   mainCanvasDimensions,
-  previewMode, // Destructure new prop
-  onPreviewModeChange, // Destructure new prop
+  previewMode,
+  onPreviewModeChange,
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
@@ -67,13 +69,13 @@ export function ControlPanel({
           <CardContent className="p-3 pt-1">
              <div className="aspect-video w-full bg-muted rounded-md border border-input overflow-hidden">
                 <PreviewCanvas
-                  currentPath={currentPath}
+                  activePath={activePath}
+                  completedPaths={completedPaths}
                   drawingTools={tools}
                   mainCanvasDimensions={mainCanvasDimensions}
-                  previewMode={previewMode} // Pass previewMode to canvas
+                  previewMode={previewMode}
                 />
              </div>
-             {/* Radio Group for Preview Mode Selection */}
              <RadioGroup
                 value={previewMode}
                 onValueChange={(value) => onPreviewModeChange(value as PreviewMode)}
@@ -88,11 +90,10 @@ export function ControlPanel({
                   <Label htmlFor="preview-userDrawn" className="text-xs font-normal cursor-pointer">User Drawn</Label>
                 </div>
              </RadioGroup>
-             {/* Dynamic Description Text */}
               <p className="text-xs text-muted-foreground mt-1">
                 {previewMode === 'userDrawn'
-                  ? "Shows your raw stroke. Pan (drag) and zoom (scroll)."
-                  : "Shows the current stroke style."}
+                  ? "Shows all strokes. Pan (drag) and zoom (scroll)."
+                  : "Shows current tool or active stroke."}
               </p>
           </CardContent>
         </Card>

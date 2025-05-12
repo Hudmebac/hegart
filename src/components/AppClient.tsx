@@ -70,7 +70,7 @@ export default function AppClient() {
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
     currentShape: 'freehand',
   });
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn'); // New state for preview mode
+  const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn');
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
@@ -244,14 +244,15 @@ export default function AppClient() {
               onToolsChange={setTools}
               shapes={shapeSettings}
               onShapesChange={setShapeSettings}
-              currentPath={currentPath}
+              activePath={currentPath}
+              completedPaths={paths}
               onClear={handleClearCanvas}
               onSave={handleSaveDrawing}
               onUndo={handleUndo}
               canUndo={canUndo}
               mainCanvasDimensions={mainCanvasDimensions}
-              previewMode={previewMode} // Pass preview mode state
-              onPreviewModeChange={setPreviewMode} // Pass setter
+              previewMode={previewMode}
+              onPreviewModeChange={setPreviewMode}
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
