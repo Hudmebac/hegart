@@ -40,7 +40,7 @@ export interface ShapeSettings {
   currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
 }
 
-export type PreviewMode = 'stroke' | 'userDrawn';
+// Removed PreviewMode type import
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
@@ -70,7 +70,8 @@ export default function AppClient() {
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
     currentShape: 'freehand',
   });
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn');
+  // Removed previewMode state
+  // const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn');
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
@@ -90,20 +91,24 @@ export default function AppClient() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
+       // Get the parent element to observe its size
+      const parentElement = canvas.parentElement;
+      if (!parentElement) return;
+
       const observer = new ResizeObserver(() => {
-        // Ensure width/height are positive before setting
-        if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
-            setMainCanvasDimensions({ width: canvas.clientWidth, height: canvas.clientHeight });
+        // Use clientWidth/clientHeight of the parent for responsive size
+        if (parentElement.clientWidth > 0 && parentElement.clientHeight > 0) {
+            setMainCanvasDimensions({ width: parentElement.clientWidth, height: parentElement.clientHeight });
         }
       });
-       // Use clientWidth/clientHeight for responsive size
-       if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
-          setMainCanvasDimensions({ width: canvas.clientWidth, height: canvas.clientHeight });
+       // Initialize with parent size
+       if (parentElement.clientWidth > 0 && parentElement.clientHeight > 0) {
+          setMainCanvasDimensions({ width: parentElement.clientWidth, height: parentElement.clientHeight });
        }
-      observer.observe(canvas.parentElement!); // Observe parent for size changes
+      observer.observe(parentElement); // Observe parent for size changes
       return () => observer.disconnect();
     }
-  }, []);
+  }, []); // Dependency array includes canvasRef, but it's stable
 
 
   const handlePathAdd = useCallback((newPath: Path) => {
@@ -132,14 +137,16 @@ export default function AppClient() {
     if (canvasRef.current) {
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
-      const mainCanvas = canvasRef.current;
+      const mainCanvas = canvasRef.current; // This ref is attached to DrawingCanvas
 
       if (!tempCtx) return;
 
-      // Use calculated dimensions for saving to match display
-      tempCanvas.width = mainCanvasDimensions.width;
-      tempCanvas.height = mainCanvasDimensions.height;
+      // Ensure positive dimensions before setting
+      const saveWidth = Math.max(1, mainCanvasDimensions.width);
+      const saveHeight = Math.max(1, mainCanvasDimensions.height);
 
+      tempCanvas.width = saveWidth;
+      tempCanvas.height = saveHeight;
 
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
@@ -251,15 +258,14 @@ export default function AppClient() {
               onUndo={handleUndo}
               canUndo={canUndo}
               mainCanvasDimensions={mainCanvasDimensions}
-              previewMode={previewMode}
-              onPreviewModeChange={setPreviewMode}
+              // Removed previewMode and onPreviewModeChange props
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
-             {/* Wrap canvas in a div that allows it to shrink */}
+             {/* Wrap canvas in a div that allows it to shrink and be observed */}
              <div className="relative w-full h-full overflow-hidden">
                 <DrawingCanvas
-                  ref={canvasRef}
+                  ref={canvasRef} // Pass ref here
                   paths={paths}
                   currentPath={currentPath}
                   onCurrentPathChange={setCurrentPath}

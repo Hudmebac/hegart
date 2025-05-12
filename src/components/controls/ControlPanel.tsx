@@ -2,7 +2,7 @@
 "use client";
 
 import type { Point, Path } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, PreviewMode } from "@/components/AppClient";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
 import { Accordion } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
@@ -13,9 +13,7 @@ import { ActionToolbar } from "./ActionToolbar";
 import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DraftingCompass } from "lucide-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
+import { DraftingCompass, ZoomIn } from "lucide-react"; // Removed RadioGroup imports
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -26,15 +24,14 @@ interface ControlPanelProps {
   onToolsChange: (settings: DrawingTools) => void;
   shapes: ShapeSettings;
   onShapesChange: (settings: ShapeSettings) => void;
-  activePath: Point[]; // Renamed from currentPath for clarity
-  completedPaths: Path[]; // New prop for all completed paths
+  activePath: Point[]; // The path currently being drawn
+  completedPaths: Path[]; // All paths already added to the main canvas
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
   mainCanvasDimensions: { width: number, height: number };
-  previewMode: PreviewMode;
-  onPreviewModeChange: (mode: PreviewMode) => void;
+  // Removed previewMode and onPreviewModeChange props
 }
 
 export function ControlPanel({
@@ -46,15 +43,13 @@ export function ControlPanel({
   onToolsChange,
   shapes,
   onShapesChange,
-  activePath, // Use new prop name
-  completedPaths, // Use new prop
+  activePath,
+  completedPaths,
   onClear,
   onSave,
   onUndo,
   canUndo,
   mainCanvasDimensions,
-  previewMode,
-  onPreviewModeChange,
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
@@ -62,38 +57,23 @@ export function ControlPanel({
         <Card>
           <CardHeader className="p-3 pb-1">
              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <DraftingCompass className="h-5 w-5" />
-                Stroke Preview
+                <ZoomIn className="h-5 w-5" /> {/* Changed icon */}
+                Drawing Preview
              </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1">
              <div className="aspect-video w-full bg-muted rounded-md border border-input overflow-hidden">
                 <PreviewCanvas
-                  activePath={activePath}
+                  // activePath={activePath} // No longer needed for 'userDrawn' preview
                   completedPaths={completedPaths}
-                  drawingTools={tools}
+                  drawingTools={tools} // Pass tools for background color
                   mainCanvasDimensions={mainCanvasDimensions}
-                  previewMode={previewMode}
+                  // Removed previewMode prop
                 />
              </div>
-             <RadioGroup
-                value={previewMode}
-                onValueChange={(value) => onPreviewModeChange(value as PreviewMode)}
-                className="flex gap-4 mt-2"
-             >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="stroke" id="preview-stroke" />
-                  <Label htmlFor="preview-stroke" className="text-xs font-normal cursor-pointer">Stroke</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="userDrawn" id="preview-userDrawn" />
-                  <Label htmlFor="preview-userDrawn" className="text-xs font-normal cursor-pointer">User Drawn</Label>
-                </div>
-             </RadioGroup>
+             {/* Removed RadioGroup for mode selection */}
               <p className="text-xs text-muted-foreground mt-1">
-                {previewMode === 'userDrawn'
-                  ? "Shows all strokes. Pan (drag) and zoom (scroll)."
-                  : "Shows current tool or active stroke."}
+                Shows current drawing. Pan (drag) and zoom (scroll).
               </p>
           </CardContent>
         </Card>
