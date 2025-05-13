@@ -54,7 +54,7 @@ export function ActionToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" onClick={onUndo} disabled={!canUndo} className="w-full">
-                <Undo2 className="mr-2 h-4 w-4" /> Undo
+                <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -67,11 +67,12 @@ export function ActionToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant={isFillModeActive ? "secondary" : "outline"} onClick={onToggleFillMode} className="w-full">
-                <PaintBucket className="mr-2 h-4 w-4" /> {isFillModeActive ? "Fill (Active)" : "Fill Tool"}
+                <PaintBucket className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
               <p>{isFillModeActive ? "Deactivate Fill Tool. Click shapes to fill." : "Activate Fill Tool"}</p>
+              <p className="text-xs text-muted-foreground">{isFillModeActive ? "Current Fill Color: Active" : "Current Fill Color: Inactive"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -80,11 +81,11 @@ export function ActionToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" onClick={onClear} className="w-full">
-                <Eraser className="mr-2 h-4 w-4" /> Clear Canvas
+                <Eraser className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Clear drawing and images</p>
+              <p>Clear Canvas (drawing, images, text)</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -93,11 +94,11 @@ export function ActionToolbar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" onClick={onSave} className="w-full">
-                <Save className="mr-2 h-4 w-4" /> Export PNG
+                <Save className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Save drawing as PNG image</p>
+              <p>Export current drawing as PNG image</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -108,7 +109,7 @@ export function ActionToolbar({
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button variant="destructive" onClick={onStopRecording} className="w-full">
-                            <StopIcon className="mr-2 h-4 w-4" /> Stop Rec.
+                            <StopIcon className="h-4 w-4" />
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent><p>Stop recording canvas</p></TooltipContent>
@@ -119,7 +120,7 @@ export function ActionToolbar({
                  <Tooltip>
                     <TooltipTrigger asChild>
                         <Button variant="outline" onClick={onStartRecording} className="w-full">
-                            <CircleDot className="mr-2 h-4 w-4" /> Record Video
+                            <CircleDot className="h-4 w-4" />
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent><p>Record canvas as WebM video</p></TooltipContent>
@@ -132,8 +133,8 @@ export function ActionToolbar({
             <Tooltip>
               <TooltipTrigger asChild>
                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full"> {/* Removed col-span-2 to fit new button */}
-                      <RotateCcw className="mr-2 h-4 w-4" /> Reset All
+                    <Button variant="destructive" className="w-full">
+                      <RotateCcw className="h-4 w-4" />
                     </Button>
                   </AlertDialogTrigger>
               </TooltipTrigger>
