@@ -17,10 +17,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
+import Link from 'next/link';
 import {
   Tooltip,
   TooltipContent,
@@ -213,7 +214,7 @@ export default function AppClient() {
       idx === pathIndex ? { ...p, fillColor } : p
     ));
     toast({ title: "Shape Filled", description: "The selected shape has been filled." });
-  }, [toast, snapshotState]); // paths removed as it's updated via setPaths
+  }, [toast, snapshotState]); 
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
@@ -862,6 +863,17 @@ export default function AppClient() {
               </TooltipTrigger>
               <TooltipContent><p>{isSidebarPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}</p></TooltipContent>
             </Tooltip>
+             <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" asChild>
+                    <Link href="/how-to">
+                      <HelpCircle className="h-5 w-5" />
+                      <span className="sr-only">How to Use #HegArt</span>
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>How to Use #HegArt</p></TooltipContent>
+              </Tooltip>
             <ThemeToggle />
           </div>
         </header>
