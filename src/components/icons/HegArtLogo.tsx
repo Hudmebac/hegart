@@ -14,38 +14,25 @@ export function HegArtLogo(props: SVGProps<SVGSVGElement>) {
         .dark .hegart-logo-path-orange { stroke: hsl(var(--secondary)); } /* Dark: Darker Orange */
 
         .hegart-logo-path-black { stroke: hsl(var(--foreground)); } /* Light: Dark Gray/Black */
-        .dark .hegart-logo-path-black { stroke: hsl(var(--primary-foreground)); } /* Dark: Dark Gray/Black */
+        .dark .hegart-logo-path-black { stroke: hsl(var(--primary-foreground)); } /* Dark: Almost White */
       `}</style>
       <rect width="100" height="100" rx="8" fill="currentColor" className="text-primary" />
-      <text
-        x="50%"
-        y="50%"
-        dy=".3em"
-        textAnchor="middle"
-        fontFamily="Montserrat, sans-serif"
-        fontSize="10"
-        fontWeight="bold"
-        fill="hsl(var(--primary-foreground))"
-        className="uppercase tracking-wider"
-      >
-        <tspan x="50%" dy="-0.6em">#Heg</tspan>
-        <tspan x="50%" dy="1.2em">Art</tspan>
-      </text>
        <path
         className="hegart-logo-path-orange"
         d="M20 80 Q 50 20 80 80"
-        strokeWidth="3"
+        strokeWidth="5" /* Increased strokeWidth for better visibility */
         fill="none"
-        opacity="0.8"
+        opacity="0.9" /* Slightly increased opacity */
       />
        <path
         className="hegart-logo-path-black"
         d="M20 20 Q 50 80 80 20"
-        strokeWidth="2"
+        strokeWidth="4" /* Increased strokeWidth */
         fill="none"
-        opacity="0.7"
-        strokeDasharray="5 3"
+        opacity="0.8" /* Slightly increased opacity */
+        strokeDasharray="6 4" /* Adjusted dasharray for different visual */
       />
     </svg>
   );
 }
+
