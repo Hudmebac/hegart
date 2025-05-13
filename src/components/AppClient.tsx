@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Point, Path, CanvasImage } from "@/types/drawing";
+import type { Point, Path, CanvasImage, ShapeType } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
 import { ControlPanel } from '@/components/controls/ControlPanel';
@@ -22,13 +22,13 @@ export interface SymmetrySettings {
 export interface AnimationSettings {
   isPulsing: boolean;
   pulseSpeed: number;
-  pulseIntensity: number; // Controls line width variation range
+  pulseIntensity: number; 
   isScaling: boolean;
   scaleSpeed: number;
-  scaleIntensity: number; // 0 to 1, max scale change percentage
+  scaleIntensity: number; 
   isSpinning: boolean;
-  spinSpeed: number; // Degrees per second
-  spinDirectionChangeFrequency: number; // How often (in seconds) direction might change
+  spinSpeed: number; 
+  spinDirectionChangeFrequency: number; 
 }
 
 export interface DrawingTools {
@@ -38,41 +38,41 @@ export interface DrawingTools {
 }
 
 export interface ShapeSettings {
-  currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
+  currentShape: ShapeType;
 }
+
+const initialSymmetrySettings: SymmetrySettings = { mirrorX: false, mirrorY: false, rotationalAxes: 1 };
+const initialAnimationSettings: AnimationSettings = {
+  isPulsing: false, pulseSpeed: 5, pulseIntensity: 4,
+  isScaling: false, scaleSpeed: 2, scaleIntensity: 0.1,
+  isSpinning: false, spinSpeed: 30, spinDirectionChangeFrequency: 5,
+};
+// Initial tool colors will be set by theme effect
+const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor'> = { lineWidth: 5 };
+const initialShapeSettings: ShapeSettings = { currentShape: 'freehand' };
+
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
   const [pathHistory, setPathHistory] = useState<Path[][]>([]);
   const [images, setImages] = useState<CanvasImage[]>([]);
-  // imageHistory could be used for undoing image additions if implemented later
-  // const [imageHistory, setImageHistory] = useState<CanvasImage[][]>([]);
 
-  const [symmetry, setSymmetry] = useState<SymmetrySettings>({
-    mirrorX: false,
-    mirrorY: false,
-    rotationalAxes: 1,
+  const [symmetry, setSymmetry] = useState<SymmetrySettings>(initialSymmetrySettings);
+  const [animation, setAnimation] = useState<AnimationSettings>(initialAnimationSettings);
+  const [tools, setTools] = useState<DrawingTools>(() => {
+    // Initialize with theme-dependent colors
+    const isSystemDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Assume default theme is light if not system or if window is undefined initially
+    const defaultIsDark = false; 
+    const isDarkMode = isSystemDark || defaultIsDark; 
+    return {
+      ...initialDrawingToolsBase,
+      strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
+      backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
+    };
   });
-  const [animation, setAnimation] = useState<AnimationSettings>({
-    isPulsing: false,
-    pulseSpeed: 5,
-    pulseIntensity: 4,
-    isScaling: false,
-    scaleSpeed: 2,
-    scaleIntensity: 0.1,
-    isSpinning: false,
-    spinSpeed: 30,
-    spinDirectionChangeFrequency: 5,
-  });
-  const [tools, setTools] = useState<DrawingTools>({
-    strokeColor: '#000000',
-    lineWidth: 5,
-    backgroundColor: '#FAFAFA',
-  });
-  const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
-    currentShape: 'freehand',
-  });
+  const [shapeSettings, setShapeSettings] = useState<ShapeSettings>(initialShapeSettings);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
@@ -80,11 +80,15 @@ export default function AppClient() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mainCanvasDimensions, setMainCanvasDimensions] = useState({ width: 800, height: 600 });
 
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentTheme === 'dark';
     setTools(prev => ({
-      ...prev,
+      ...prev, // Keep other settings like lineWidth
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     }));
@@ -123,10 +127,9 @@ export default function AppClient() {
       if (dataUrl) {
         const img = new Image();
         img.onload = () => {
-          const canvasWidth = mainCanvasDimensions.width || 800; // Fallback if dimensions not ready
+          const canvasWidth = mainCanvasDimensions.width || 800;
           const canvasHeight = mainCanvasDimensions.height || 600;
           
-          // Scale image to fit within 30% of the smallest canvas dimension, or max 300px
           const maxDimPercentage = Math.min(canvasWidth, canvasHeight) * 0.3;
           const maxDimAbsolute = 300;
           const maxDim = Math.min(maxDimPercentage, maxDimAbsolute);
@@ -144,7 +147,7 @@ export default function AppClient() {
             }
           }
           
-          w = Math.min(w, canvasWidth * 0.9); // Ensure it's not too large for canvas
+          w = Math.min(w, canvasWidth * 0.9);
           h = Math.min(h, canvasHeight * 0.9);
 
           const newImage: CanvasImage = {
@@ -157,7 +160,6 @@ export default function AppClient() {
             originalWidth: img.naturalWidth,
             originalHeight: img.naturalHeight,
           };
-          // setImageHistory(prev => [...prev, images]); // For undo, if implemented
           setImages(prev => [...prev, newImage]);
           toast({ title: "Image Added", description: "The image has been added to the canvas." });
         };
@@ -171,16 +173,15 @@ export default function AppClient() {
        toast({ variant: "destructive", title: "Error", description: "Could not read image file." });
     };
     reader.readAsDataURL(file);
-  }, [mainCanvasDimensions, toast]); // Removed images from deps to avoid issues with setImageHistory
+  }, [mainCanvasDimensions, toast]);
 
   const handleClearCanvas = useCallback(() => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]);
+     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state for potential undo
      setPaths([]);
      setCurrentPath([]);
-     // setImageHistory(prev => [...prev, images]); // For undo, if implemented
      setImages([]);
      toast({ title: "Canvas Cleared", description: "Drawing and images have been cleared." });
-  }, [paths, toast]); // Removed images from deps
+  }, [paths, toast]);
 
   const handleUndo = useCallback(() => {
     if (pathHistory.length === 0) return;
@@ -188,7 +189,8 @@ export default function AppClient() {
     setPaths(previousPaths);
     setPathHistory((prevHistory) => prevHistory.slice(0, -1));
     setCurrentPath([]);
-    // Note: Image undo is not implemented in this pass.
+    // Note: Image undo is not fully implemented with path history (would need separate image history)
+    // For simplicity, undo only affects paths for now.
   }, [pathHistory]);
 
   const canUndo = pathHistory.length > 0;
@@ -266,18 +268,15 @@ export default function AppClient() {
       };
       paths.forEach(path => drawStaticSymmetricPath(path));
 
-      // Draw images (simplified for save: no live symmetry/animation effects from DrawingCanvas)
       const imageLoadPromises = images.map(imgData => {
         return new Promise<void>((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
-            // Draw image at its stored position and size
             tempCtx.drawImage(img, imgData.x, imgData.y, imgData.width, imgData.height);
             resolve();
           };
           img.onerror = (err) => {
             console.error("Error loading image for save:", imgData.src, err);
-            // Resolve even on error to not block saving other elements, or reject if all must succeed
             resolve(); 
           };
           img.src = imgData.src;
@@ -299,13 +298,77 @@ export default function AppClient() {
     }
   }, [canvasRef, paths, images, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
 
+  const handleResetSettings = useCallback(() => {
+    setSymmetry(initialSymmetrySettings);
+    setAnimation(initialAnimationSettings);
+    
+    const currentThemeResolved = theme === 'system' ? systemTheme : theme;
+    const isDarkMode = currentThemeResolved === 'dark';
+    setTools({
+      ...initialDrawingToolsBase,
+      strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
+      backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
+    });
+    setShapeSettings(initialShapeSettings);
+    handleClearCanvas(); // Also clear canvas content on full reset
+    setPathHistory([]); // Clear undo history too
+    toast({ title: "Settings Reset", description: "All settings and canvas cleared." });
+  }, [theme, systemTheme, handleClearCanvas]);
+
+  const handleStartRecording = useCallback(() => {
+    if (!canvasRef.current) {
+      toast({ variant: "destructive", title: "Recording Error", description: "Canvas not available." });
+      return;
+    }
+    try {
+      const stream = canvasRef.current.captureStream(30); // 30 FPS
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      recordedChunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'hegart-recording.webm';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setIsRecording(false);
+        toast({ title: "Recording Saved", description: "Video saved as hegart-recording.webm." });
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      toast({ title: "Recording Started", description: "Canvas recording has begun." });
+    } catch (error) {
+      console.error("Error starting recording:", error);
+      toast({ variant: "destructive", title: "Recording Error", description: `Could not start recording: ${error instanceof Error ? error.message : "Unknown error"}` });
+      setIsRecording(false);
+    }
+  }, [toast]);
+
+  const handleStopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      // onstop will handle the rest
+      toast({ title: "Recording Stopped", description: "Processing video..." });
+    }
+  }, [isRecording, toast]);
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
 
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-screen w-full flex-col">
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleMobileSidebar}>
               <Menu className="h-6 w-6" />
@@ -318,7 +381,7 @@ export default function AppClient() {
         </header>
         <div className="flex flex-1 overflow-hidden">
           <Sidebar
-            className="border-r md:w-80 lg:w-96"
+            className="border-r md:w-80 lg:w-96 z-10" // Ensure sidebar is above maximized preview if it overflows
             collapsible="icon"
             open={isMobileSidebarOpen}
             onOpenChange={setIsMobileSidebarOpen}
@@ -338,16 +401,20 @@ export default function AppClient() {
               onSave={handleSaveDrawing}
               onUndo={handleUndo}
               canUndo={canUndo}
+              onResetSettings={handleResetSettings}
               mainCanvasDimensions={mainCanvasDimensions}
-              onImageUpload={handleImageUpload} // Pass image upload handler
+              onImageUpload={handleImageUpload}
+              isRecording={isRecording}
+              onStartRecording={handleStartRecording}
+              onStopRecording={handleStopRecording}
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
-             <div className="relative w-full h-full overflow-hidden">
+             <div className="relative w-full h-full overflow-hidden"> {/* This overflow-hidden might conflict with maximized preview, ensure preview is truly fixed/portaled if it breaks out */}
                 <DrawingCanvas
                   ref={canvasRef}
                   paths={paths}
-                  images={images} // Pass images
+                  images={images}
                   currentPath={currentPath}
                   onCurrentPathChange={setCurrentPath}
                   onPathAdd={handlePathAdd}

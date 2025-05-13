@@ -1,14 +1,14 @@
 
 "use client";
 
-import type { Point, Path, CanvasImage } from "@/types/drawing"; // Added CanvasImage
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
+import type { Point, Path, CanvasImage, ShapeType } from "@/types/drawing"; 
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings as AppShapeSettings } from "@/components/AppClient"; // Use AppShapeSettings to avoid conflict
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
 import { AnimationControl } from "./AnimationSettings";
 import { DrawingToolControl } from "./DrawingTools";
-import { ShapeControl } from "./ShapeSettings";
+import { ShapeControl } from "./ShapeSettings"; // ShapeControl will internally use ShapeType
 import { ActionToolbar } from "./ActionToolbar";
 import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DraftingCompass, ZoomIn, Image as ImageIcon, Upload } from "lucide-react";
+import { ZoomIn, Image as ImageIcon, Upload } from "lucide-react";
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -25,16 +25,20 @@ interface ControlPanelProps {
   onAnimationChange: (settings: AnimationSettings) => void;
   tools: DrawingTools;
   onToolsChange: (settings: DrawingTools) => void;
-  shapes: ShapeSettings;
-  onShapesChange: (settings: ShapeSettings) => void;
+  shapes: AppShapeSettings; // Use aliased ShapeSettings from AppClient
+  onShapesChange: (settings: AppShapeSettings) => void;
   activePath: Point[];
   completedPaths: Path[];
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  onResetSettings: () => void; // New prop for reset
   mainCanvasDimensions: { width: number, height: number };
-  onImageUpload: (file: File) => void; // New prop for image upload
+  onImageUpload: (file: File) => void;
+  isRecording: boolean;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
 }
 
 export function ControlPanel({
@@ -52,8 +56,12 @@ export function ControlPanel({
   onSave,
   onUndo,
   canUndo,
+  onResetSettings,
   mainCanvasDimensions,
-  onImageUpload, // Destructure new prop
+  onImageUpload,
+  isRecording,
+  onStartRecording,
+  onStopRecording,
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
@@ -66,16 +74,14 @@ export function ControlPanel({
              </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1">
-             <div className="aspect-video w-full bg-muted rounded-md border border-input overflow-hidden">
+             {/* Removed overflow-hidden to allow maximized preview to break out */}
+             <div className="aspect-video w-full bg-muted rounded-md border border-input relative">
                 <PreviewCanvas
                   completedPaths={completedPaths}
                   drawingTools={tools}
                   mainCanvasDimensions={mainCanvasDimensions}
                 />
              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Shows current drawing. Pan (drag) and zoom (scroll). Uploaded images are not shown here.
-              </p>
           </CardContent>
         </Card>
 
@@ -86,6 +92,10 @@ export function ControlPanel({
           onSave={onSave}
           onUndo={onUndo}
           canUndo={canUndo}
+          onResetSettings={onResetSettings}
+          isRecording={isRecording}
+          onStartRecording={onStartRecording}
+          onStopRecording={onStopRecording}
         />
         <Separator />
         <Accordion
@@ -108,12 +118,12 @@ export function ControlPanel({
                 <Input
                   id="imageUpload"
                   type="file"
-                  accept="image/*,.heic,.heif" // Added HEIC/HEIF common mobile formats
+                  accept="image/*,.heic,.heif" 
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       onImageUpload(e.target.files[0]);
-                      e.target.value = ''; // Reset file input to allow uploading same file again
+                      e.target.value = ''; 
                     }
                   }}
                 />

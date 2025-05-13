@@ -18,4 +18,18 @@ export interface CanvasImage {
   height: number;
   originalWidth?: number;
   originalHeight?: number;
+  rotation?: number; // Optional: in radians
+  scale?: number;    // Optional: uniform scale factor
 }
+
+export type ShapeType = 
+  | 'freehand' 
+  | 'line' 
+  | 'triangle' 
+  | 'square' 
+  | 'circle' 
+  | 'ellipse' 
+  | 'pentagon' 
+  | 'hexagon' 
+  | 'star' 
+  | 'arrow';
