@@ -55,13 +55,15 @@ export interface AnimationSettings {
 
 export interface DrawingTools {
   strokeColor: string;
-  fillColor: string; // Added for fill
+  fillColor: string; 
   lineWidth: number;
   backgroundColor: string;
 }
 
 export interface ShapeSettings {
   currentShape: ShapeType;
+  isFixedShape: boolean; // New: If true, shape is not subject to symmetry
+  excludeFromAnimation: boolean; // New: If true, shape is not animated
 }
 
 type ControlSectionId = 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
@@ -75,7 +77,11 @@ const initialAnimationSettings: AnimationSettings = {
   isSpinning: false, spinSpeed: 30, spinDirectionChangeFrequency: 5,
 };
 const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor' | 'fillColor'> = { lineWidth: 5 };
-const initialShapeSettings: ShapeSettings = { currentShape: 'freehand' };
+const initialShapeSettings: ShapeSettings = { 
+  currentShape: 'freehand',
+  isFixedShape: false,
+  excludeFromAnimation: false,
+};
 
 
 export default function AppClient() {
@@ -153,11 +159,17 @@ export default function AppClient() {
 
   const handlePathAdd = useCallback((newPath: Path) => {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
-     setPaths((prevPaths) => [...prevPaths, newPath]);
+     // Augment the path with current shape settings for fixed/animation exclusion
+     const augmentedPath: Path = {
+      ...newPath,
+      isFixedShape: shapeSettings.isFixedShape,
+      excludeFromAnimation: shapeSettings.excludeFromAnimation,
+    };
+     setPaths((prevPaths) => [...prevPaths, augmentedPath]);
      setCurrentPath([]);
      setSelectedImageId(null); 
      setIsFillModeActive(false); // Turn off fill mode after drawing
-  }, [paths]);
+  }, [paths, shapeSettings.isFixedShape, shapeSettings.excludeFromAnimation]);
 
   const handleFillPath = useCallback((pathIndex: number, fillColor: string) => {
     setPathHistory(prev => [...prev, paths]);
@@ -246,41 +258,32 @@ export default function AppClient() {
   }, [paths, toast]);
 
   const handleUndo = useCallback(() => {
-    // Prioritize undoing fills or path additions over image removals if pathHistory is available.
     if (pathHistory.length > 0) {
         const previousPaths = pathHistory[pathHistory.length - 1];
         setPaths(previousPaths);
         setPathHistory((prevHistory) => prevHistory.slice(0, -1));
-        setCurrentPath([]); // Clear current path being drawn
-        setSelectedImageId(null); // Deselect image
-        setIsFillModeActive(false); // Deactivate fill mode
+        setCurrentPath([]); 
+        setSelectedImageId(null); 
+        setIsFillModeActive(false); 
         toast({ title: "Undo Successful", description: "Last drawing or fill action undone." });
         return;
     }
 
-    // If no path history, try to undo image removal (if an image was selected for removal logic)
-    // This specific image removal logic might need adjustment based on how image "undo" is defined.
-    // Currently, selecting an image then hitting undo removes the *last* image if it matches selected.
-    // This might be confusing. A more robust undo would involve an "action stack" for images too.
-    // For now, let's keep the existing image undo logic if pathHistory is empty.
     if (images.length > 0 && selectedImageId) { 
-        const lastImage = images.find(img => img.id === selectedImageId); // Check selected
-        if(lastImage){ // If selected image exists
+        const lastImage = images.find(img => img.id === selectedImageId); 
+        if(lastImage){ 
              setImages(prev => prev.filter(img => img.id !== selectedImageId));
              setSelectedImageId(null);
              toast({ title: "Image Removed", description: "Selected image was removed."});
              return;
         }
     }
-    // Fallback to simple last image removal if no path history and no image was specifically selected for "direct removal"
      if (images.length > 0) {
         setImages(prev => prev.slice(0, -1));
         setSelectedImageId(null);
         toast({ title: "Image Removed", description: "Last added image was removed."});
         return;
     }
-
-
   }, [pathHistory, paths, images, selectedImageId, toast]);
   
   const canUndo = pathHistory.length > 0 || images.length > 0;
@@ -309,18 +312,14 @@ export default function AppClient() {
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
       const drawStaticPath = (ctx: CanvasRenderingContext2D, pathPoints: Point[], strokeColor: string, lineWidth: number, fillColor?: string) => {
-          if (pathPoints.length < 1) return; // Allow single point for fill if it makes sense (not typical)
+          if (pathPoints.length < 1) return;
           ctx.beginPath();
           ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
           for (let i = 1; i < pathPoints.length; i++) {
             ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
           }
           
-          // Shapes that are not just lines (like freehand, arrow, checkmark) should be closed for a visually correct fill.
-          // For saving, we assume shapes like circle, square etc., define a closed area.
-          // Freehand will be closed by fill() automatically if fillColor is present.
-          // If path has few points and is not a line/arrow/etc, it might be a fillable shape.
-          if (pathPoints.length > 2) { // Simplistic check: many shapes need > 2 points
+          if (pathPoints.length > 2) { 
             ctx.closePath();
           }
 
@@ -329,7 +328,7 @@ export default function AppClient() {
             ctx.fill();
           }
           
-          if (lineWidth > 0) { // Only stroke if lineWidth is positive
+          if (lineWidth > 0) { 
             ctx.strokeStyle = strokeColor;
             ctx.lineWidth = lineWidth;
             ctx.lineCap = 'round';
@@ -338,7 +337,14 @@ export default function AppClient() {
           }
       };
 
-      const drawStaticSymmetricPath = (originalPath: Path) => {
+      const drawStaticSymmetricPathOrFixed = (originalPath: Path) => {
+        if (originalPath.isFixedShape) {
+          // Draw fixed shape once, without symmetry
+          drawStaticPath(tempCtx, originalPath.points, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
+          return;
+        }
+
+        // Existing symmetric drawing logic for non-fixed shapes
         const ctx = tempCtx;
         const canvas = tempCanvas;
         const centerX = canvas.width / 2;
@@ -377,7 +383,7 @@ export default function AppClient() {
           }
         }
       };
-      paths.forEach(path => drawStaticSymmetricPath(path));
+      paths.forEach(path => drawStaticSymmetricPathOrFixed(path));
 
       const imageLoadPromises = images.map(imgData => {
         return new Promise<void>((resolve, reject) => {
@@ -434,7 +440,7 @@ export default function AppClient() {
         toast({ variant: "destructive", title: "Save Error", description: "Failed to process images for saving." });
       }
     }
-  }, [canvasRef, paths, images, tools.backgroundColor, tools.fillColor, symmetry, mainCanvasDimensions, toast]);
+  }, [canvasRef, paths, images, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
 
   const handleResetSettings = useCallback(() => {
     setSymmetry(initialSymmetrySettings);
@@ -448,7 +454,7 @@ export default function AppClient() {
       fillColor: isDarkMode ? '#FFFFFF40' : '#00000040',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     });
-    setShapeSettings(initialShapeSettings);
+    setShapeSettings(initialShapeSettings); // This will reset isFixedShape and excludeFromAnimation
     handleClearCanvas(); 
     setPathHistory([]); 
     setSelectedImageId(null);
@@ -517,9 +523,9 @@ export default function AppClient() {
 
   const toggleFillMode = useCallback(() => {
     setIsFillModeActive(prev => !prev);
-    if (!isFillModeActive) { // If was false, now turning true
-      setSelectedImageId(null); // Deselect image when activating fill mode
-      setCurrentPath([]); // Clear any partial path drawing
+    if (!isFillModeActive) { 
+      setSelectedImageId(null); 
+      setCurrentPath([]); 
     }
   }, [isFillModeActive]);
 
@@ -637,7 +643,7 @@ export default function AppClient() {
         switch (sectionName) {
           case 'actions':
             sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode}/></div>;
-            break;
+                            break;
           case 'shapes':
             sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} /></div>;
             break;

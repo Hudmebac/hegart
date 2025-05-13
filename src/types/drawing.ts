@@ -9,6 +9,8 @@ export interface Path {
   color: string;
   lineWidth: number;
   fillColor?: string; // Added for fill functionality
+  isFixedShape?: boolean; // New: If true, bypasses symmetry
+  excludeFromAnimation?: boolean; // New: If true, bypasses animation effects
 }
 
 export interface CanvasImage {

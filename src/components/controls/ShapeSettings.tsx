@@ -4,6 +4,7 @@
 import type { ShapeType } from "@/types/drawing";
 import type { ShapeSettings as AppShapeSettings } from "@/components/AppClient";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -13,6 +14,7 @@ import {
   SelectGroup,
   SelectLabel,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 interface ShapeControlProps {
   shapes: AppShapeSettings;
@@ -22,6 +24,14 @@ interface ShapeControlProps {
 export function ShapeControl({ shapes, onShapesChange }: ShapeControlProps) {
   const handleShapeChange = (value: ShapeType) => {
     onShapesChange({ ...shapes, currentShape: value });
+  };
+
+  const handleIsFixedChange = (checked: boolean) => {
+    onShapesChange({ ...shapes, isFixedShape: checked });
+  };
+
+  const handleExcludeFromAnimationChange = (checked: boolean) => {
+    onShapesChange({ ...shapes, excludeFromAnimation: checked });
   };
 
   return (
@@ -67,7 +77,40 @@ export function ShapeControl({ shapes, onShapesChange }: ShapeControlProps) {
           Choose 'Freehand' to draw normally, or select a shape to draw it by defining its start and end points.
         </p>
       </div>
+
+      <Separator />
+
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="isFixedShape"
+            checked={shapes.isFixedShape}
+            onCheckedChange={handleIsFixedChange}
+          />
+          <Label htmlFor="isFixedShape" className="text-sm font-normal cursor-pointer">
+            Fixed Shape (No Symmetry)
+          </Label>
+        </div>
+        <p className="text-xs text-muted-foreground pl-6">
+          If checked, this shape will not be affected by mirror or rotational symmetry settings.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="excludeFromAnimation"
+            checked={shapes.excludeFromAnimation}
+            onCheckedChange={handleExcludeFromAnimationChange}
+          />
+          <Label htmlFor="excludeFromAnimation" className="text-sm font-normal cursor-pointer">
+            Exclude from Animation
+          </Label>
+        </div>
+        <p className="text-xs text-muted-foreground pl-6">
+          If checked, this shape will not be affected by any animation settings (pulse, scale, spin).
+        </p>
+      </div>
     </div>
   );
 }
-
