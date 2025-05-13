@@ -814,11 +814,11 @@ export default function AppClient() {
             <div className="flex justify-center items-center my-4">
                 <Image 
                     src="https://picsum.photos/300/200" 
-                    alt="Funky Random Graphic" 
+                    alt="Symmetric Art Example" 
                     width={300} 
                     height={200} 
                     className="rounded-md shadow-lg"
-                    data-ai-hint="abstract colorful"
+                    data-ai-hint="mandala pattern"
                 />
             </div>
             <DialogFooter>
