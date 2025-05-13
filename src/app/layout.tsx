@@ -3,6 +3,7 @@ import { montserrat } from '@/lib/fonts';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Button } from "@/components/ui/button"; // Added import for Button
 
 export const metadata: Metadata = {
   title: '#HegArt - Symmetric Art Generator', 
@@ -27,12 +28,14 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
-          <footer className="flex justify-center items-center p-4 w-full">
-            <p className="mr-4">#HegArt © 2025 Craig Heggie. All rights reserved.</p>
-            <a href="https://heggie.netlify.app/" target="_blank" rel="noopener noreferrer">
-              <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+          <footer className="flex flex-col sm:flex-row justify-center items-center p-4 w-full text-center sm:text-left text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
+            <p>#HegArt © 2025 Craig Heggie. All rights reserved.</p>
+            <a href="https://heggie.netlify.app/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
+              <Button variant="outline" size="sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="https://heggie.netlify.app/favicon.ico" alt="HeggieHub Favicon" className="h-4 w-4 mr-2" />
                 HeggieHub
-              </button>
+              </Button>
             </a>
           </footer>
           <Toaster />
