@@ -8,6 +8,7 @@ export interface Path {
   points: Point[];
   color: string;
   lineWidth: number;
+  fillColor?: string; // Added for fill functionality
 }
 
 export interface CanvasImage {

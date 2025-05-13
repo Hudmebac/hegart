@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, PaintBucket } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -55,6 +55,7 @@ export interface AnimationSettings {
 
 export interface DrawingTools {
   strokeColor: string;
+  fillColor: string; // Added for fill
   lineWidth: number;
   backgroundColor: string;
 }
@@ -73,7 +74,7 @@ const initialAnimationSettings: AnimationSettings = {
   isScaling: false, scaleSpeed: 2, scaleIntensity: 0.1,
   isSpinning: false, spinSpeed: 30, spinDirectionChangeFrequency: 5,
 };
-const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor'> = { lineWidth: 5 };
+const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor' | 'fillColor'> = { lineWidth: 5 };
 const initialShapeSettings: ShapeSettings = { currentShape: 'freehand' };
 
 
@@ -88,15 +89,17 @@ export default function AppClient() {
   const [animation, setAnimation] = useState<AnimationSettings>(initialAnimationSettings);
   const [tools, setTools] = useState<DrawingTools>(() => {
     const isSystemDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const defaultIsDark = false;
+    const defaultIsDark = false; 
     const isDarkMode = isSystemDark || defaultIsDark;
     return {
       ...initialDrawingToolsBase,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
+      fillColor: isDarkMode ? '#FFFFFF40' : '#00000040', // Default semi-transparent fill
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     };
   });
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>(initialShapeSettings);
+  const [isFillModeActive, setIsFillModeActive] = useState(false);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
@@ -119,10 +122,12 @@ export default function AppClient() {
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentTheme === 'dark';
+    const defaultFillColor = isDarkMode ? '#FFFFFF40' : '#00000040';
     setTools(prev => ({
       ...prev,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
+      fillColor: prev.fillColor === (isDarkMode ? '#00000040' : '#FFFFFF40') || !prev.fillColor ? defaultFillColor : prev.fillColor,
     }));
   }, [theme, systemTheme]);
 
@@ -151,7 +156,17 @@ export default function AppClient() {
      setPaths((prevPaths) => [...prevPaths, newPath]);
      setCurrentPath([]);
      setSelectedImageId(null); 
+     setIsFillModeActive(false); // Turn off fill mode after drawing
   }, [paths]);
+
+  const handleFillPath = useCallback((pathIndex: number, fillColor: string) => {
+    setPathHistory(prev => [...prev, paths]);
+    setPaths(prevPaths => prevPaths.map((p, idx) => 
+      idx === pathIndex ? { ...p, fillColor } : p
+    ));
+    toast({ title: "Shape Filled", description: "The selected shape has been filled." });
+    // setIsFillModeActive(false); // Optionally keep fill mode active
+  }, [paths, toast]);
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
@@ -195,6 +210,7 @@ export default function AppClient() {
           };
           setImages(prev => [...prev, newImage]);
           setSelectedImageId(newImage.id); 
+          setIsFillModeActive(false); // Turn off fill mode when uploading image
           toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
         };
         img.onerror = () => {
@@ -215,6 +231,7 @@ export default function AppClient() {
 
   const handleImageSelect = useCallback((id: string | null) => {
     setSelectedImageId(id);
+    if (id) setIsFillModeActive(false); // Turn off fill mode if an image is selected
   }, []);
 
 
@@ -224,32 +241,54 @@ export default function AppClient() {
      setCurrentPath([]);
      setImages([]);
      setSelectedImageId(null);
+     setIsFillModeActive(false);
      toast({ title: "Canvas Cleared", description: "Drawing and images have been cleared." });
   }, [paths, toast]);
 
   const handleUndo = useCallback(() => {
+    // Prioritize undoing fills or path additions over image removals if pathHistory is available.
+    if (pathHistory.length > 0) {
+        const previousPaths = pathHistory[pathHistory.length - 1];
+        setPaths(previousPaths);
+        setPathHistory((prevHistory) => prevHistory.slice(0, -1));
+        setCurrentPath([]); // Clear current path being drawn
+        setSelectedImageId(null); // Deselect image
+        setIsFillModeActive(false); // Deactivate fill mode
+        toast({ title: "Undo Successful", description: "Last drawing or fill action undone." });
+        return;
+    }
+
+    // If no path history, try to undo image removal (if an image was selected for removal logic)
+    // This specific image removal logic might need adjustment based on how image "undo" is defined.
+    // Currently, selecting an image then hitting undo removes the *last* image if it matches selected.
+    // This might be confusing. A more robust undo would involve an "action stack" for images too.
+    // For now, let's keep the existing image undo logic if pathHistory is empty.
     if (images.length > 0 && selectedImageId) { 
-        const lastImage = images[images.length -1];
-        if(lastImage.id === selectedImageId){
-             setImages(prev => prev.slice(0, -1));
+        const lastImage = images.find(img => img.id === selectedImageId); // Check selected
+        if(lastImage){ // If selected image exists
+             setImages(prev => prev.filter(img => img.id !== selectedImageId));
              setSelectedImageId(null);
-             toast({ title: "Image Removed", description: "Last added image was removed."});
+             toast({ title: "Image Removed", description: "Selected image was removed."});
              return;
         }
     }
-    if (pathHistory.length === 0) return;
-    const previousPaths = pathHistory[pathHistory.length - 1];
-    setPaths(previousPaths);
-    setPathHistory((prevHistory) => prevHistory.slice(0, -1));
-    setCurrentPath([]);
-    setSelectedImageId(null);
-  }, [pathHistory, images, selectedImageId, toast]);
+    // Fallback to simple last image removal if no path history and no image was specifically selected for "direct removal"
+     if (images.length > 0) {
+        setImages(prev => prev.slice(0, -1));
+        setSelectedImageId(null);
+        toast({ title: "Image Removed", description: "Last added image was removed."});
+        return;
+    }
 
-  const canUndo = pathHistory.length > 0 || (images.length > 0 && selectedImageId !== null && images[images.length-1]?.id === selectedImageId) ;
+
+  }, [pathHistory, paths, images, selectedImageId, toast]);
+  
+  const canUndo = pathHistory.length > 0 || images.length > 0;
 
 
   const handleSaveDrawing = useCallback(async () => {
     setSelectedImageId(null); 
+    setIsFillModeActive(false);
     await new Promise(resolve => setTimeout(resolve, 50)); 
 
     if (canvasRef.current) {
@@ -269,18 +308,34 @@ export default function AppClient() {
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-      const drawStaticPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
-          if (path.length < 2) return;
+      const drawStaticPath = (ctx: CanvasRenderingContext2D, pathPoints: Point[], strokeColor: string, lineWidth: number, fillColor?: string) => {
+          if (pathPoints.length < 1) return; // Allow single point for fill if it makes sense (not typical)
           ctx.beginPath();
-          ctx.moveTo(path[0].x, path[0].y);
-          for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
+          ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+          for (let i = 1; i < pathPoints.length; i++) {
+            ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
           }
-          ctx.strokeStyle = color;
-          ctx.lineWidth = lineWidth;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.stroke();
+          
+          // Shapes that are not just lines (like freehand, arrow, checkmark) should be closed for a visually correct fill.
+          // For saving, we assume shapes like circle, square etc., define a closed area.
+          // Freehand will be closed by fill() automatically if fillColor is present.
+          // If path has few points and is not a line/arrow/etc, it might be a fillable shape.
+          if (pathPoints.length > 2) { // Simplistic check: many shapes need > 2 points
+            ctx.closePath();
+          }
+
+          if (fillColor) {
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+          }
+          
+          if (lineWidth > 0) { // Only stroke if lineWidth is positive
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+          }
       };
 
       const drawStaticSymmetricPath = (originalPath: Path) => {
@@ -306,19 +361,19 @@ export default function AppClient() {
           };
 
           const baseTransformedPath = originalPath.points.map(transformPoint);
-          drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth);
+          drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
 
           if (symmetry.mirrorX) {
             const mirroredXPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: p.y})).map(transformPoint);
-            drawStaticPath(ctx, mirroredXPath, originalPath.color, originalPath.lineWidth);
+            drawStaticPath(ctx, mirroredXPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
           if (symmetry.mirrorY) {
              const mirroredYPath = originalPath.points.map(p => ({x: p.x, y: canvas.height - p.y})).map(transformPoint);
-             drawStaticPath(ctx, mirroredYPath, originalPath.color, originalPath.lineWidth);
+             drawStaticPath(ctx, mirroredYPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
           if (symmetry.mirrorX && symmetry.mirrorY) {
               const mirroredXYPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: canvas.height - p.y})).map(transformPoint);
-              drawStaticPath(ctx, mirroredXYPath, originalPath.color, originalPath.lineWidth);
+              drawStaticPath(ctx, mirroredXYPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
         }
       };
@@ -379,7 +434,7 @@ export default function AppClient() {
         toast({ variant: "destructive", title: "Save Error", description: "Failed to process images for saving." });
       }
     }
-  }, [canvasRef, paths, images, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
+  }, [canvasRef, paths, images, tools.backgroundColor, tools.fillColor, symmetry, mainCanvasDimensions, toast]);
 
   const handleResetSettings = useCallback(() => {
     setSymmetry(initialSymmetrySettings);
@@ -390,17 +445,20 @@ export default function AppClient() {
     setTools({
       ...initialDrawingToolsBase,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
+      fillColor: isDarkMode ? '#FFFFFF40' : '#00000040',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     });
     setShapeSettings(initialShapeSettings);
     handleClearCanvas(); 
     setPathHistory([]); 
     setSelectedImageId(null);
+    setIsFillModeActive(false);
     toast({ title: "Settings Reset", description: "All settings and canvas cleared." });
   }, [theme, systemTheme, handleClearCanvas, toast]);
 
   const handleStartRecording = useCallback(() => {
     setSelectedImageId(null); 
+    setIsFillModeActive(false);
     if (!canvasRef.current) {
       toast({ variant: "destructive", title: "Recording Error", description: "Canvas not available." });
       return;
@@ -452,10 +510,18 @@ export default function AppClient() {
   const toggleSidebarPin = () => {
     const newPinnedState = !isSidebarPinned;
     setIsSidebarPinned(newPinnedState);
-    if (newPinnedState) { // If now pinned
-      setIsSidebarHovered(false); // Reset hover state
+    if (newPinnedState) { 
+      setIsSidebarHovered(false); 
     }
   };
+
+  const toggleFillMode = useCallback(() => {
+    setIsFillModeActive(prev => !prev);
+    if (!isFillModeActive) { // If was false, now turning true
+      setSelectedImageId(null); // Deselect image when activating fill mode
+      setCurrentPath([]); // Clear any partial path drawing
+    }
+  }, [isFillModeActive]);
 
 
   const togglePreview = () => setIsPreviewVisible(prev => !prev);
@@ -491,14 +557,7 @@ export default function AppClient() {
     if (isMobile) {
         setIsMobileSidebarOpen(true);
     } else if (!isSidebarPinned) {
-        // If sidebar is unpinned, hovering will open it. If user clicks a section, we can make it "stick" open by pinning.
-        // Or, just let the hover mechanism handle it. For now, let's assume clicking a section when unpinned
-        // should ideally pin the sidebar for easier interaction, or rely on hover.
-        // If we want it to pin on section selection:
-        // setIsSidebarPinned(true);
-        // setIsSidebarHovered(false); // Ensure hover doesn't conflict
-        // For now, let hover handle it or user can pin manually.
-        setIsSidebarHovered(true); // Open it temporarily if unpinned
+        setIsSidebarHovered(true); 
     }
   };
   
@@ -526,7 +585,7 @@ export default function AppClient() {
                     let sectionContent: JSX.Element | null = null;
                     switch (sectionConfig.name) {
                         case 'actions':
-                            sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
+                            sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} />;
                             break;
                         case 'shapes':
                             sectionContent = <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
@@ -577,7 +636,7 @@ export default function AppClient() {
 
         switch (sectionName) {
           case 'actions':
-            sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} /></div>;
+            sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode}/></div>;
             break;
           case 'shapes':
             sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} /></div>;
@@ -600,7 +659,7 @@ export default function AppClient() {
         }
       }
     }
-    return <>{componentsToRender}</>;
+    return <div className="space-y-4">{componentsToRender}</div>;
   };
 
   const sidebarOpenState = isMobile 
@@ -610,16 +669,12 @@ export default function AppClient() {
   const sidebarOnOpenChange = isMobile 
     ? setIsMobileSidebarOpen 
     : (open: boolean) => {
-        // For desktop, this 'onOpenChange' is primarily for when the sidebar might internally
-        // manage its open state, or if the Sheet component (used for mobile) calls it.
-        // If unpinned, and sidebar itself tries to open (e.g. by a click on its own trigger if it had one),
-        // we might want to pin it. Otherwise, hover handles temporary open.
         if (!isMobile) {
-          if (open && !isSidebarPinned) { // If it's asked to open and it's not pinned
-            setIsSidebarPinned(true); // Pin it
-            setIsSidebarHovered(false); // Ensure hover state is reset
-          } else if (!open && isSidebarPinned) { // If it's asked to close and it's pinned
-            setIsSidebarPinned(false); // Unpin it
+          if (open && !isSidebarPinned) { 
+            setIsSidebarPinned(true); 
+            setIsSidebarHovered(false); 
+          } else if (!open && isSidebarPinned) { 
+            setIsSidebarPinned(false); 
           }
         }
       };
@@ -699,7 +754,7 @@ export default function AppClient() {
             <ThemeToggle />
           </div>
         </header>
-        <div className="flex flex-1 overflow-hidden relative"> {/* Added relative positioning here */}
+        <div className="flex flex-1 overflow-hidden relative"> 
           <Sidebar
             className="border-r md:w-80 lg:w-96 z-10"
             collapsible={isMobile ? "none" : "icon"} 
@@ -734,6 +789,7 @@ export default function AppClient() {
                   currentPath={currentPath}
                   onCurrentPathChange={setCurrentPath}
                   onPathAdd={handlePathAdd}
+                  onFillPath={handleFillPath}
                   symmetrySettings={symmetry}
                   animationSettings={animation}
                   drawingTools={tools}
@@ -742,6 +798,7 @@ export default function AppClient() {
                   selectedImageId={selectedImageId}
                   onImageSelect={handleImageSelect}
                   onImageUpdate={handleImageUpdate}
+                  isFillModeActive={isFillModeActive}
                 />
              </div>
           </SidebarInset>

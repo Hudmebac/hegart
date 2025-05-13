@@ -2,7 +2,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Eraser, Save, Undo2, RotateCcw, CircleDot, Square as StopIcon } from "lucide-react"; 
+import { Eraser, Save, Undo2, RotateCcw, CircleDot, Square as StopIcon, PaintBucket } from "lucide-react"; 
 import {
   Tooltip,
   TooltipContent,
@@ -30,6 +30,8 @@ interface ActionToolbarProps {
   isRecording: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
+  isFillModeActive: boolean;
+  onToggleFillMode: () => void;
 }
 
 export function ActionToolbar({ 
@@ -40,7 +42,9 @@ export function ActionToolbar({
   onResetSettings,
   isRecording,
   onStartRecording,
-  onStopRecording 
+  onStopRecording,
+  isFillModeActive,
+  onToggleFillMode,
 }: ActionToolbarProps) {
   return (
     <div className="flex flex-col space-y-2">
@@ -54,7 +58,20 @@ export function ActionToolbar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Undo last drawing action</p>
+              <p>Undo last drawing or fill action</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant={isFillModeActive ? "secondary" : "outline"} onClick={onToggleFillMode} className="w-full">
+                <PaintBucket className="mr-2 h-4 w-4" /> {isFillModeActive ? "Fill (Active)" : "Fill Tool"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isFillModeActive ? "Deactivate Fill Tool. Click shapes to fill." : "Activate Fill Tool"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -85,6 +102,7 @@ export function ActionToolbar({
           </Tooltip>
         </TooltipProvider>
 
+
         {isRecording ? (
             <TooltipProvider>
                 <Tooltip>
@@ -114,7 +132,7 @@ export function ActionToolbar({
             <Tooltip>
               <TooltipTrigger asChild>
                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" className="w-full col-span-2"> {/* Make it span 2 columns or adjust layout */}
+                    <Button variant="destructive" className="w-full"> {/* Removed col-span-2 to fit new button */}
                       <RotateCcw className="mr-2 h-4 w-4" /> Reset All
                     </Button>
                   </AlertDialogTrigger>

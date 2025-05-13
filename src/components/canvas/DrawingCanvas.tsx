@@ -12,6 +12,7 @@ interface DrawingCanvasProps {
   currentPath: Point[];
   onCurrentPathChange: (path: Point[]) => void;
   onPathAdd: (path: Path) => void;
+  onFillPath: (pathIndex: number, fillColor: string) => void; // New prop for fill
   symmetrySettings: SymmetrySettings;
   animationSettings: AnimationSettings;
   drawingTools: DrawingTools;
@@ -20,7 +21,49 @@ interface DrawingCanvasProps {
   selectedImageId: string | null;
   onImageSelect: (id: string | null) => void;
   onImageUpdate: (updatedImage: CanvasImage) => void;
+  isFillModeActive: boolean; // New prop
 }
+
+// Helper to check if a path is reasonably "closed" for freehand filling
+const isPathClosedGeometric = (points: Point[], threshold: number = 15): boolean => {
+    if (points.length < 3) return false;
+    const first = points[0];
+    const last = points[points.length - 1];
+    return Math.hypot(last.x - first.x, last.y - first.y) < threshold;
+};
+
+// Helper function to transform a point based on symmetry settings
+const transformSymmetricPoint = (
+    p: Point,
+    centerX: number,
+    centerY: number,
+    baseAngle: number,
+    mirrorTargetWidth: number, // canvas.width if mirroring X, else 0 or original x
+    mirrorTargetHeight: number, // canvas.height if mirroring Y, else 0 or original y
+    applyMirrorX: boolean,
+    applyMirrorY: boolean,
+    isRotationalContext: boolean
+): Point => {
+    let { x, y } = p;
+
+    // 1. Apply mirroring if specified (mirrors are relative to original untransformed space)
+    if (applyMirrorX) x = mirrorTargetWidth - x;
+    if (applyMirrorY) y = mirrorTargetHeight - y;
+    
+    // 2. Apply rotation if in a rotational context
+    if (isRotationalContext) {
+        const translatedX = x - centerX;
+        const translatedY = y - centerY;
+        const cosA = Math.cos(baseAngle);
+        const sinA = Math.sin(baseAngle);
+        const rotatedX = translatedX * cosA - translatedY * sinA;
+        const rotatedY = translatedX * sinA + translatedY * cosA;
+        x = rotatedX + centerX;
+        y = rotatedY + centerY;
+    }
+    return { x, y };
+};
+
 
 export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
   ({
@@ -29,6 +72,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     currentPath,
     onCurrentPathChange,
     onPathAdd,
+    onFillPath,
     symmetrySettings,
     animationSettings,
     drawingTools,
@@ -37,6 +81,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     selectedImageId,
     onImageSelect,
     onImageUpdate,
+    isFillModeActive,
   }, ref) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
     useImperativeHandle(ref, () => internalCanvasRef.current!);
@@ -121,12 +166,77 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       return { x, y };
     };
 
+    const handleFillAttempt = (clickPoint: Point) => {
+        if (!internalCanvasRef.current) return;
+        const canvas = internalCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let filledPathIndex = -1;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
+
+        // Check paths from top-most (last drawn) to bottom-most
+        for (let i = paths.length - 1; i >= 0; i--) {
+            const pathData = paths[i];
+            if (pathData.points.length < 1) continue; // Need points to define a path
+
+            // Test against all symmetric instances of this path
+            for (let axisIdx = 0; axisIdx < numAxes; axisIdx++) {
+                const angle = (axisIdx * 2 * Math.PI) / numAxes;
+                const isRotContext = numAxes > 1;
+
+                const mirrorsToTest = [
+                    { mx: false, my: false }, // Original
+                    ...(symmetrySettings.mirrorX ? [{ mx: true, my: false }] : []),
+                    ...(symmetrySettings.mirrorY ? [{ mx: false, my: true }] : []),
+                    ...(symmetrySettings.mirrorX && symmetrySettings.mirrorY ? [{ mx: true, my: true }] : []),
+                ];
+                
+                for (const mirror of mirrorsToTest) {
+                    ctx.beginPath();
+                    const firstTransformedPoint = transformSymmetricPoint(pathData.points[0], centerX, centerY, angle, canvas.width, canvas.height, mirror.mx, mirror.my, isRotContext);
+                    ctx.moveTo(firstTransformedPoint.x, firstTransformedPoint.y);
+                    for (let k = 1; k < pathData.points.length; k++) {
+                        const transformedPoint = transformSymmetricPoint(pathData.points[k], centerX, centerY, angle, canvas.width, canvas.height, mirror.mx, mirror.my, isRotContext);
+                        ctx.lineTo(transformedPoint.x, transformedPoint.y);
+                    }
+                    
+                    // Close the path for an accurate area check, especially for non-freehand shapes or closed freehand
+                    // shapeType is not directly available here, so we rely on point structure or freehand check.
+                    if (pathData.points.length > 2) { // Only close if it can form a polygon
+                        ctx.closePath();
+                    }
+
+                    if (ctx.isPointInPath(clickPoint.x, clickPoint.y)) {
+                        filledPathIndex = i;
+                        break;
+                    }
+                }
+                if (filledPathIndex !== -1) break;
+            }
+            if (filledPathIndex !== -1) break;
+        }
+
+        if (filledPathIndex !== -1) {
+            onFillPath(filledPathIndex, drawingTools.fillColor);
+            onImageSelect(null); // Deselect any image if a fill occurs
+        }
+    };
+
+
     const startDrawing = (event: React.MouseEvent | React.TouchEvent) => {
       if ('touches' in event) event.preventDefault();
       const point = getCanvasCoordinates(event);
       if (!point) return;
 
-      // Check if clicking on an image
+      if (isFillModeActive) {
+        handleFillAttempt(point);
+        return; // Do not proceed with drawing or image dragging
+      }
+
+      // Check if clicking on an image (only if not in fill mode)
       for (let i = images.length - 1; i >= 0; i--) {
         const imgData = images[i];
         if (
@@ -139,12 +249,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
           setIsDraggingImage(true);
           dragStartPointRef.current = point;
           imageStartPosRef.current = { x: imgData.x, y: imgData.y };
-          setIsDrawing(false); // Don't start drawing paths
+          setIsDrawing(false); 
           return;
         }
       }
       
-      // If not clicking on an image, deselect any selected image
       if (selectedImageId) {
         onImageSelect(null);
       }
@@ -155,6 +264,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
     const draw = (event: React.MouseEvent | React.TouchEvent) => {
       if ('touches' in event) event.preventDefault();
+      if (isFillModeActive) return; // No drawing/dragging if fill mode is active
+
       const point = getCanvasCoordinates(event);
       if (!point) return;
 
@@ -183,11 +294,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const finishDrawing = () => {
+      if (isFillModeActive) return; 
+
       if (isDraggingImage) {
         setIsDraggingImage(false);
         dragStartPointRef.current = null;
         imageStartPosRef.current = null;
-        // Image remains selected
         return;
       }
 
@@ -201,28 +313,57 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       } else {
           finalPathPoints = currentPath;
       }
-       if (finalPathPoints.length >= 2) {
+       if (finalPathPoints.length >= (shapeSettings.currentShape === 'line' || shapeSettings.currentShape === 'arrow' || shapeSettings.currentShape === 'checkMark' ? 2 : 1)) { // Lines need 2 points, fillable shapes could be 1 for some interpretations
           onPathAdd({
             points: finalPathPoints,
             color: drawingTools.strokeColor,
             lineWidth: drawingTools.lineWidth,
+            // fillColor is not set here, it's set by onFillPath
           });
        }
       onCurrentPathChange([]);
     };
 
-    const drawSinglePath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number, currentLineWidthOffset: number = 0) => {
-      if (path.length < 2) return;
+    const drawSinglePath = (
+        ctx: CanvasRenderingContext2D, 
+        pathPoints: Point[], 
+        strokeColor: string, 
+        lineWidth: number, 
+        currentLineWidthOffset: number = 0,
+        fillColor?: string | null // Added fillColor
+    ) => {
+      if (pathPoints.length === 0) return;
       const effectiveLineWidth = lineWidth + currentLineWidthOffset;
-      if (effectiveLineWidth < 0.1) return;
+      
+      // Do not draw if line is too thin AND there's no fill color
+      if (effectiveLineWidth < 0.1 && !fillColor) return;
+
       ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = effectiveLineWidth;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.stroke();
+      ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+      for (let i = 1; i < pathPoints.length; i++) ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+      
+      // For fillable shapes (not lines/arrows typically), close the path.
+      // This ensures `ctx.fill()` works as expected for areas.
+      // For freehand, fill() auto-closes. For defined shapes, they should form a closed loop if fillable.
+      // A simple heuristic: if it's not a "line-like" shape and has enough points, close it.
+      // This logic could be tied to `shapeSettings.currentShape` if available here, or rely on point structure.
+      if (pathPoints.length > 2 && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark') {
+           ctx.closePath(); 
+      }
+
+
+      if (fillColor) {
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+      }
+
+      if (effectiveLineWidth >= 0.1) { // Only stroke if line width is positive
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = effectiveLineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
     };
 
     const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
@@ -242,47 +383,66 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         canvas: HTMLCanvasElement,
         htmlImg: HTMLImageElement,
         imgData: CanvasImage,
-        symmetry: SymmetrySettings,
+        currentSymmetry: SymmetrySettings, // Use currentSymmetry passed in
         isSelected: boolean
      ) => {
         const { x, y, width, height } = imgData;
-        const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
+        const numAxes = currentSymmetry.rotationalAxes > 0 ? currentSymmetry.rotationalAxes : 1;
         const canvasCenterX = canvas.width / 2;
         const canvasCenterY = canvas.height / 2;
+        const isRotContext = numAxes > 1;
 
         for (let i = 0; i < numAxes; i++) {
             const rotationAngle = (i * 2 * Math.PI) / numAxes;
 
-            const applyTransformAndDraw = (currentX: number, currentY: number, scaleX: number = 1, scaleY: number = 1) => {
+            const mirrorsToApply = [{ mx: false, my: false }];
+            if (currentSymmetry.mirrorX) mirrorsToApply.push({ mx: true, my: false });
+            if (currentSymmetry.mirrorY) mirrorsToApply.push({ mx: false, my: true });
+            if (currentSymmetry.mirrorX && currentSymmetry.mirrorY) mirrorsToApply.push({ mx: true, my: true });
+            
+            // Deduplicate mirror configurations if rotational symmetry already covers them (e.g. 2 axes with mirrorX is redundant)
+            // This is complex; for now, let's allow redundant drawing which is visually fine.
+            
+            for (const mirror of mirrorsToApply) {
                 ctx.save();
-                ctx.translate(canvasCenterX, canvasCenterY);
-                ctx.rotate(rotationAngle);
-                ctx.translate(-canvasCenterX, -canvasCenterY);
+                // Apply rotation first for rotational symmetry
+                if (isRotContext) {
+                    ctx.translate(canvasCenterX, canvasCenterY);
+                    ctx.rotate(rotationAngle);
+                    ctx.translate(-canvasCenterX, -canvasCenterY);
+                }
 
-                ctx.translate(currentX + width / 2, currentY + height / 2);
-                ctx.scale(scaleX, scaleY);
-                ctx.drawImage(htmlImg, -width / 2, -height / 2, width, height);
+                // Then apply mirroring transformations relative to the (potentially rotated) canvas space
+                let drawX = x;
+                let drawY = y;
+                let scaleX = 1;
+                let scaleY = 1;
+
+                if (mirror.mx) {
+                    drawX = canvas.width - x - width; // Adjust anchor for mirrored drawing
+                    scaleX = -1;
+                }
+                if (mirror.my) {
+                    drawY = canvas.height - y - height; // Adjust anchor for mirrored drawing
+                    scaleY = -1;
+                }
                 
-                if (isSelected && i === 0 && scaleX === 1 && scaleY === 1) { // Draw selection only on the primary, non-mirrored image
+                ctx.translate(drawX + (scaleX === 1 ? 0 : width), drawY + (scaleY === 1 ? 0 : height));
+                ctx.scale(scaleX, scaleY);
+                ctx.drawImage(htmlImg, 0, 0, width, height);
+                
+                // Selection highlight on the primary, non-mirrored, non-rotated instance
+                if (isSelected && i === 0 && !mirror.mx && !mirror.my) {
                     ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
-                    ctx.lineWidth = 2 / (animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1); // Adjust for global scale
-                    ctx.setLineDash([4, 2]);
-                    ctx.strokeRect(-width / 2 - 2, -height / 2 - 2, width + 4, height + 4);
+                    // Adjust lineWidth for current global scale transformation if any
+                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1; // Placeholder time for sin
+                    ctx.lineWidth = 2 / globalScale; 
+                    ctx.setLineDash([4 / globalScale, 2 / globalScale]);
+                    // Stroke rect in original image's coordinate system before mirror/rotation of this specific draw call
+                    ctx.strokeRect(0 - 2, 0 - 2, width + 4, height + 4);
                     ctx.setLineDash([]);
                 }
                 ctx.restore();
-            };
-
-            applyTransformAndDraw(x, y); 
-
-            if (symmetry.mirrorX) {
-                applyTransformAndDraw(canvas.width - x - width, y, -1, 1);
-            }
-            if (symmetry.mirrorY) {
-                applyTransformAndDraw(x, canvas.height - y - height, 1, -1);
-            }
-            if (symmetry.mirrorX && symmetry.mirrorY) {
-                applyTransformAndDraw(canvas.width - x - width, canvas.height - y - height, -1, -1);
             }
         }
      };
@@ -331,7 +491,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
            totalRotation.current += rotationThisFrame;
        } else if (!animationSettings.isSpinning) {
             totalRotation.current = 0;
-            lastSpinDirectionChangeTime.current = 0;
+            lastSpinDirectionChangeTime.current = 0; // Reset when not spinning
        }
        const currentRotationAngle = totalRotation.current;
 
@@ -344,54 +504,49 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       images.forEach(imgData => {
         const htmlImg = loadedHtmlImages[imgData.id];
         if (htmlImg && htmlImg.complete && htmlImg.naturalWidth > 0) {
+          // Pass symmetrySettings directly to drawSymmetricImage
           drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings, imgData.id === selectedImageId);
         }
       });
 
-      const drawSymmetricPath = (originalPathData: Path | { points: Point[], color: string, lineWidth: number }, isTemporaryShape = false) => {
-        const { points: originalPoints, color, lineWidth } = originalPathData;
+      const drawSymmetricPath = (originalPathData: Path, isTemporaryShape = false) => {
+        const { points: originalPoints, color, lineWidth, fillColor } = originalPathData;
         const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
         const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
+        const isRotContext = numAxes > 1;
 
         for (let i = 0; i < numAxes; i++) {
            const angle = (i * 2 * Math.PI) / numAxes;
-           const transformPoint = (p: Point): Point => {
-             let { x, y } = p;
-             if (numAxes > 1) {
-               const translatedX = x - centerX;
-               const translatedY = y - centerY;
-               const rotatedX = translatedX * Math.cos(angle) - translatedY * Math.sin(angle);
-               const rotatedY = translatedX * Math.sin(angle) + translatedY * Math.cos(angle);
-               x = rotatedX + centerX;
-               y = rotatedY + centerY;
-             }
-             return { x, y };
-           };
-          const baseTransformedPath = originalPoints.map(transformPoint);
-          drawFunc(ctx, baseTransformedPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
+          
+           // Base (no mirror)
+           const baseTransformedPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, 0,0,false,false, isRotContext));
+           drawFunc(ctx, baseTransformedPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset, fillColor);
 
            if (symmetrySettings.mirrorX) {
-             const mirroredXPath = baseTransformedPath.map(p => ({x: canvas.width - p.x, y: p.y}));
-              drawFunc(ctx, mirroredXPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
+             const mirroredXPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, canvas.width, 0, true, false, isRotContext));
+             drawFunc(ctx, mirroredXPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset, fillColor);
            }
            if (symmetrySettings.mirrorY) {
-             const mirroredYPath = baseTransformedPath.map(p => ({x: p.x, y: canvas.height - p.y}));
-              drawFunc(ctx, mirroredYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
+             const mirroredYPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, 0, canvas.height, false, true, isRotContext));
+             drawFunc(ctx, mirroredYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset, fillColor);
            }
            if (symmetrySettings.mirrorX && symmetrySettings.mirrorY) {
-               const mirroredXYPath = baseTransformedPath.map(p => ({x: canvas.width - p.x, y: canvas.height - p.y}));
-              drawFunc(ctx, mirroredXYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
+               const mirroredXYPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, canvas.width, canvas.height, true, true, isRotContext));
+               drawFunc(ctx, mirroredXYPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset, fillColor);
            }
         }
       };
       paths.forEach(pathData => drawSymmetricPath(pathData));
-      if (isDrawing && currentPath.length > 0) {
+      if (isDrawing && currentPath.length > 0 && !isFillModeActive) {
           const isShapePreview = shapeSettings.currentShape !== 'freehand';
-          drawSymmetricPath({
+          // Create a temporary Path-like object for the current drawing
+          const currentDrawingPath = {
               points: currentPath,
               color: drawingTools.strokeColor,
               lineWidth: drawingTools.lineWidth,
-          }, isShapePreview);
+              // No fillColor for current path preview usually, unless we add that feature
+          };
+          drawSymmetricPath(currentDrawingPath, isShapePreview);
       }
       
       ctx.restore(); 
@@ -400,9 +555,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         animationFrameId.current = requestAnimationFrame(renderCanvas);
       } else {
         animationFrameId.current = null;
-        if (!animationSettings.isSpinning) {
+        if (!animationSettings.isSpinning) { // Ensure reset if spinning stops
           totalRotation.current = 0;
-          spinDirection.current = 1;
+          // spinDirection can remain as is
           lastSpinDirectionChangeTime.current = 0;
         }
       }
@@ -436,7 +591,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]); // Only re-run if background color changes for initial setup
+    }, [backgroundColor]); 
 
      useEffect(() => {
        renderCanvas(); 
@@ -445,23 +600,23 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
        if (shouldAnimate && !animationFrameId.current) {
          lastAnimationTime.current = performance.now();
-         if (animationSettings.isSpinning && animationSettings.spinDirectionChangeFrequency > 0) {
+         if (animationSettings.isSpinning && animationSettings.spinDirectionChangeFrequency > 0 && lastSpinDirectionChangeTime.current === 0) {
             lastSpinDirectionChangeTime.current = performance.now();
          } else if (!animationSettings.isSpinning) {
-            totalRotation.current = 0;
-            spinDirection.current = 1;
-            lastSpinDirectionChangeTime.current = 0;
+            totalRotation.current = 0; // Reset rotation if spinning is turned off
+            // spinDirection can persist
+            lastSpinDirectionChangeTime.current = 0; // Reset this too
          }
          animationFrameId.current = requestAnimationFrame(renderCanvas);
        } else if (!shouldAnimate && animationFrameId.current) {
          cancelAnimationFrame(animationFrameId.current);
          animationFrameId.current = null;
-         totalRotation.current = 0;
-         spinDirection.current = 1;
-         lastSpinDirectionChangeTime.current = 0;
-         renderCanvas(); // Render one last time to clear animation artifacts
+         if (!animationSettings.isSpinning) { // Ensure reset values are applied if animation stops
+            totalRotation.current = 0;
+            lastSpinDirectionChangeTime.current = 0;
+         }
+         renderCanvas(); 
        }
-       // Ensure canvas re-renders when selectedImageId changes to show/hide selection highlight
        if (!animationFrameId.current) renderCanvas();
 
 
@@ -472,8 +627,10 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId]);
+     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId, isFillModeActive]);
 
+
+    const canvasCursor = isFillModeActive ? 'copy' : (isDraggingImage ? 'grabbing' : 'crosshair');
 
     return (
       <canvas
@@ -481,11 +638,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={finishDrawing}
-        onMouseLeave={finishDrawing} // Important for when mouse leaves canvas while dragging image or drawing
+        onMouseLeave={finishDrawing} 
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={finishDrawing}
-        className="h-full w-full touch-none bg-transparent cursor-crosshair"
+        className="h-full w-full touch-none bg-transparent"
+        style={{ cursor: canvasCursor }}
         data-ai-hint="abstract art images"
       />
     );
@@ -493,4 +651,3 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 );
 
 DrawingCanvas.displayName = "DrawingCanvas";
-

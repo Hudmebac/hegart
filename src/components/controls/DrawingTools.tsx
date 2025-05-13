@@ -35,6 +35,28 @@ export function DrawingToolControl({ tools, onToolsChange }: DrawingToolControlP
         </div>
         <p className="text-xs text-muted-foreground">Choose the color for your strokes.</p>
       </div>
+
+      <div className="space-y-3">
+        <Label htmlFor="fillColor" className="text-sm">Fill Color</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            id="fillColor"
+            type="color"
+            value={tools.fillColor}
+            onChange={(e) => onToolsChange({ ...tools, fillColor: e.target.value })}
+            className="h-10 w-16 p-1"
+          />
+          <Input
+            type="text"
+            value={tools.fillColor}
+            onChange={(e) => onToolsChange({ ...tools, fillColor: e.target.value })}
+            className="h-10 flex-grow"
+            aria-label="Fill color hex value"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">Select color to fill shapes. Activate Fill Tool and click a shape.</p>
+      </div>
+
       <div className="space-y-3">
         <Label htmlFor="lineWidth" className="text-sm">Line Width ({tools.lineWidth}px)</Label>
         <Slider
