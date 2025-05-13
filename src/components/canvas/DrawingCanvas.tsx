@@ -1,22 +1,25 @@
 
 "use client";
 
-import type { Point, Path, CanvasImage } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
+import type { Point, Path, CanvasImage, CanvasText } from "@/types/drawing";
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, TextSettings } from "@/components/AppClient";
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { drawShape } from './shapeUtils';
 
 interface DrawingCanvasProps {
   paths: Path[];
   images: CanvasImage[];
+  texts: CanvasText[];
   currentPath: Point[];
   onCurrentPathChange: (path: Point[]) => void;
   onPathAdd: (path: Path) => void;
+  onTextAdd: (text: CanvasText) => void;
   onFillPath: (pathIndex: number, fillColor: string) => void; 
   symmetrySettings: SymmetrySettings;
   animationSettings: AnimationSettings;
   drawingTools: DrawingTools;
   shapeSettings: ShapeSettings;
+  textSettings: TextSettings;
   backgroundColor: string;
   selectedImageId: string | null;
   onImageSelect: (id: string | null) => void;
@@ -59,14 +62,17 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
   ({
     paths,
     images,
+    texts,
     currentPath,
     onCurrentPathChange,
     onPathAdd,
+    onTextAdd,
     onFillPath,
     symmetrySettings,
     animationSettings,
     drawingTools,
     shapeSettings,
+    textSettings,
     backgroundColor,
     selectedImageId,
     onImageSelect,
@@ -83,7 +89,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     
     const animationFrameId = useRef<number | null>(null);
     const lastAnimationTime = useRef<number>(0);
-    const globalPulseOffset = useRef<number>(0); // Stores current pulse offset for the frame
+    const globalPulseOffset = useRef<number>(0); 
     const totalRotation = useRef<number>(0);
     const spinDirection = useRef<number>(1);
     const lastSpinDirectionChangeTime = useRef<number>(0);
@@ -167,12 +173,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         
-
         for (let i = paths.length - 1; i >= 0; i--) {
             const pathData = paths[i];
             if (pathData.points.length < 1) continue;
 
-            if (pathData.isFixedShape) { // Check fixed shapes directly without symmetry
+            if (pathData.isFixedShape) { 
                  ctx.beginPath();
                  ctx.moveTo(pathData.points[0].x, pathData.points[0].y);
                  for (let k = 1; k < pathData.points.length; k++) {
@@ -183,10 +188,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                      filledPathIndex = i;
                      break;
                  }
-                 continue; // Move to next path if this was fixed
+                 continue; 
             }
             
-            // For non-fixed shapes, check symmetric instances
             const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
             for (let axisIdx = 0; axisIdx < numAxes; axisIdx++) {
                 const angle = (axisIdx * 2 * Math.PI) / numAxes;
@@ -237,6 +241,29 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         return; 
       }
 
+      if (shapeSettings.currentShape === 'text') {
+        if (textSettings.content.trim() === "") return; // Don't add empty text
+        const newTextObject: CanvasText = {
+            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            text: textSettings.content,
+            x: point.x,
+            y: point.y,
+            fontFamily: textSettings.fontFamily,
+            fontSize: textSettings.fontSize,
+            fontWeight: textSettings.fontWeight,
+            fontStyle: textSettings.fontStyle,
+            textAlign: textSettings.textAlign,
+            textBaseline: textSettings.textBaseline,
+            color: drawingTools.strokeColor, // Use strokeColor for text color
+            isFixedShape: shapeSettings.isFixedShape,
+            excludeFromAnimation: shapeSettings.excludeFromAnimation,
+        };
+        onTextAdd(newTextObject);
+        onImageSelect(null);
+        setIsDrawing(false); // Text is placed on click, no dragging to draw
+        return;
+      }
+      
       for (let i = images.length - 1; i >= 0; i--) {
         const imgData = images[i];
         if (
@@ -264,7 +291,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
     const draw = (event: React.MouseEvent | React.TouchEvent) => {
       if ('touches' in event) event.preventDefault();
-      if (isFillModeActive) return; 
+      if (isFillModeActive || shapeSettings.currentShape === 'text') return; 
 
       const point = getCanvasCoordinates(event);
       if (!point) return;
@@ -294,12 +321,13 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const finishDrawing = () => {
-      if (isFillModeActive) return; 
+      if (isFillModeActive || shapeSettings.currentShape === 'text') return; 
 
       if (isDraggingImage) {
         setIsDraggingImage(false);
         dragStartPointRef.current = null;
         imageStartPosRef.current = null;
+        // Here you might want to snapshot history for image drag completion
         return;
       }
 
@@ -314,11 +342,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
           finalPathPoints = currentPath;
       }
        if (finalPathPoints.length >= (shapeSettings.currentShape === 'line' || shapeSettings.currentShape === 'arrow' || shapeSettings.currentShape === 'checkMark' ? 2 : 1)) {
-          onPathAdd({ // Path object created here, AppClient will augment it
+          onPathAdd({ 
             points: finalPathPoints,
             color: drawingTools.strokeColor,
             lineWidth: drawingTools.lineWidth,
-            fillColor: shapeSettings.currentShape !== 'freehand' && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark' ? drawingTools.fillColor : undefined, // Tentative auto-fill for closed shapes
+            fillColor: shapeSettings.currentShape !== 'freehand' && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark' ? drawingTools.fillColor : undefined, 
           });
        }
       onCurrentPathChange([]);
@@ -329,7 +357,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         pathPoints: Point[], 
         strokeColor: string, 
         lineWidth: number, 
-        currentLineWidthOffset: number, // No default, must be provided
+        currentLineWidthOffset: number,
         fillColor?: string | null 
     ) => {
       if (pathPoints.length === 0) return;
@@ -341,7 +369,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
       for (let i = 1; i < pathPoints.length; i++) ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
       
-      if (pathPoints.length > 2 && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark') {
+      const isClosedShapeByDefault = shapeSettings.currentShape !== 'line' && 
+                                   shapeSettings.currentShape !== 'arrow' && 
+                                   shapeSettings.currentShape !== 'checkMark' &&
+                                   shapeSettings.currentShape !== 'freehand';
+
+      if (pathPoints.length > 2 && isClosedShapeByDefault) {
            ctx.closePath(); 
       }
 
@@ -365,13 +398,13 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         ctx.moveTo(path[0].x, path[0].y);
         ctx.lineTo(path[1].x, path[1].y);
         ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, lineWidth * 0.5); // Temporary lines are thinner
+        ctx.lineWidth = Math.max(1, lineWidth * 0.5); 
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
     };
 
-    const drawSymmetricImage = ( /* ... same as before ... */
+    const drawSymmetricImage = (
         ctx: CanvasRenderingContext2D,
         canvas: HTMLCanvasElement,
         htmlImg: HTMLImageElement,
@@ -415,9 +448,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                 ctx.scale(scaleX, scaleY);
                 ctx.drawImage(htmlImg, 0, 0, width, height);
                 
-                if (isSelected && i === 0 && !mirror.mx && !mirror.my) { // Highlight only the original selected image
+                if (isSelected && i === 0 && !mirror.mx && !mirror.my) { 
                     ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
-                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0 /* Replace with actual scale phase if needed */) * animationSettings.scaleIntensity) : 1;
+                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1;
                     ctx.lineWidth = 2 / globalScale; 
                     ctx.setLineDash([4 / globalScale, 2 / globalScale]);
                     ctx.strokeRect(0 - 2, 0 - 2, width + 4, height + 4);
@@ -434,7 +467,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         pathData: Path,
         currentSymmetrySettings: SymmetrySettings,
         isTemporaryShape: boolean,
-        currentFramePulseOffset: number // This is the calculated pulse offset for this specific path for this frame
+        currentFramePulseOffset: number
     ) => {
         const { points: originalPoints, color, lineWidth, fillColor } = pathData;
         const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
@@ -444,8 +477,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         const numAxes = currentSymmetrySettings.rotationalAxes > 0 ? currentSymmetrySettings.rotationalAxes : 1;
         const isRotContext = numAxes > 1;
 
-        // If it's a temporary shape (dashed line guide), it doesn't pulse.
-        // Otherwise, use the provided currentFramePulseOffset.
         const actualLineWidthOffset = isTemporaryShape ? 0 : currentFramePulseOffset;
 
         for (let i = 0; i < numAxes; i++) {
@@ -469,6 +500,55 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
     };
 
+    const drawSymmetricText = (
+        ctx: CanvasRenderingContext2D,
+        canvas: HTMLCanvasElement,
+        textData: CanvasText,
+        currentSymmetrySettings: SymmetrySettings
+    ) => {
+        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline } = textData;
+        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+        ctx.fillStyle = color;
+        ctx.textAlign = textAlign;
+        ctx.textBaseline = textBaseline;
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const numAxes = currentSymmetrySettings.rotationalAxes > 0 ? currentSymmetrySettings.rotationalAxes : 1;
+        const isRotContext = numAxes > 1;
+
+        for (let i = 0; i < numAxes; i++) {
+            const angle = (i * 2 * Math.PI) / numAxes;
+            
+            const mirrorsToApply = [{ mx: false, my: false }];
+            if (currentSymmetrySettings.mirrorX) mirrorsToApply.push({ mx: true, my: false });
+            if (currentSymmetrySettings.mirrorY) mirrorsToApply.push({ mx: false, my: true });
+            if (currentSymmetrySettings.mirrorX && currentSymmetrySettings.mirrorY) mirrorsToApply.push({ mx: true, my: true });
+
+            for (const mirror of mirrorsToApply) {
+                ctx.save();
+                let transformedX = x;
+                let transformedY = y;
+
+                if (mirror.mx) transformedX = canvas.width - x;
+                if (mirror.my) transformedY = canvas.height - y;
+
+                if (isRotContext) {
+                    const translatedX = transformedX - centerX;
+                    const translatedY = transformedY - centerY;
+                    const cosA = Math.cos(angle);
+                    const sinA = Math.sin(angle);
+                    transformedX = translatedX * cosA - translatedY * sinA + centerX;
+                    transformedY = translatedX * sinA + translatedY * cosA + centerY;
+                }
+                // Note: True text content mirroring (flipping the text itself) would require ctx.scale(-1, 1) etc.
+                // This implementation mirrors the text's origin point.
+                ctx.fillText(text, transformedX, transformedY);
+                ctx.restore();
+            }
+        }
+    };
+
 
     const renderCanvas = (time: number = 0) => {
       if (!internalCanvasRef.current) return;
@@ -485,7 +565,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
-      // Calculate global animation parameters for this frame
        if (animationSettings.isPulsing) {
          const pulseCycle = (time / (1000 / (animationSettings.pulseSpeed / 2))) % (2 * Math.PI);
          globalPulseOffset.current = Math.cos(pulseCycle) * animationSettings.pulseIntensity;
@@ -520,7 +599,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
        }
        const currentRotationAngle = totalRotation.current;
 
-      // 1. Draw paths/images affected by global animation transformations (scaling, spinning)
       ctx.save(); 
       ctx.translate(centerX, centerY);
       if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
@@ -538,28 +616,53 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
       });
       images.forEach(imgData => {
+        // Assuming images are not excludable from animation for now
         const htmlImg = loadedHtmlImages[imgData.id];
         if (htmlImg && htmlImg.complete && htmlImg.naturalWidth > 0) {
           drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings, imgData.id === selectedImageId);
         }
       });
+      texts.forEach(textData => {
+        if (!textData.excludeFromAnimation) {
+            if (textData.isFixedShape) {
+                ctx.font = `${textData.fontStyle} ${textData.fontWeight} ${textData.fontSize}px ${textData.fontFamily}`;
+                ctx.fillStyle = textData.color;
+                ctx.textAlign = textData.textAlign;
+                ctx.textBaseline = textData.textBaseline;
+                ctx.fillText(textData.text, textData.x, textData.y);
+            } else {
+                drawSymmetricText(ctx, canvas, textData, symmetrySettings);
+            }
+        }
+      });
       ctx.restore(); 
 
-      // 2. Draw paths EXCLUDED from global animation transformations (drawn statically)
       paths.forEach(pathData => {
         if (pathData.excludeFromAnimation) {
-          const staticLineWidthOffset = 0; // No pulse for excluded paths
+          const staticLineWidthOffset = 0; 
           if (pathData.isFixedShape) {
             drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, staticLineWidthOffset, pathData.fillColor);
           } else {
-            // Symmetry still applies, but to the static, un-animated version of the path.
             drawSymmetricPath(ctx, canvas, pathData, symmetrySettings, false, staticLineWidthOffset);
           }
         }
       });
+      texts.forEach(textData => {
+        if (textData.excludeFromAnimation) {
+            ctx.font = `${textData.fontStyle} ${textData.fontWeight} ${textData.fontSize}px ${textData.fontFamily}`;
+            ctx.fillStyle = textData.color;
+            ctx.textAlign = textData.textAlign;
+            ctx.textBaseline = textData.textBaseline;
+            if (textData.isFixedShape) {
+                ctx.fillText(textData.text, textData.x, textData.y);
+            } else {
+                // Symmetry still applies for excluded from animation if not fixed
+                drawSymmetricText(ctx, canvas, textData, symmetrySettings);
+            }
+        }
+      });
       
-      // 3. Current path preview (drawn on top)
-      if (isDrawing && currentPath.length > 0 && !isFillModeActive) {
+      if (isDrawing && currentPath.length > 0 && !isFillModeActive && shapeSettings.currentShape !== 'text') {
           const isShapePreviewLine = shapeSettings.currentShape !== 'freehand';
           const tempPreviewPath: Path = {
               points: currentPath,
@@ -569,7 +672,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
               excludeFromAnimation: shapeSettings.excludeFromAnimation
           };
 
-          const previewPulseOffset = isShapePreviewLine ? 0 // Dashed guides don't pulse
+          const previewPulseOffset = isShapePreviewLine ? 0 
                                      : (animationSettings.isPulsing && !tempPreviewPath.excludeFromAnimation) ? globalPulseOffset.current
                                      : 0;
 
@@ -581,14 +684,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
           }
       }
       
-      // Animation loop control
       const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
       const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || isLoadingImages;
       if (shouldAnimate) {
         animationFrameId.current = requestAnimationFrame(renderCanvas);
       } else {
         animationFrameId.current = null;
-        // Ensure reset if spinning stops but other animations might have kept the loop running
         if (!animationSettings.isSpinning) { 
           totalRotation.current = 0;
           lastSpinDirectionChangeTime.current = 0;
@@ -627,8 +728,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     }, [backgroundColor]); 
 
      useEffect(() => {
-       // This effect primarily manages starting/stopping the animation loop based on settings.
-       // The actual drawing logic is within renderCanvas.
        const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
        const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || isLoadingImages;
 
@@ -641,10 +740,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
        } else if (!shouldAnimate && animationFrameId.current) {
          cancelAnimationFrame(animationFrameId.current);
          animationFrameId.current = null;
-         // If animation loop stops, render one last static frame
          renderCanvas(); 
        } else if (!animationFrameId.current) {
-         // Ensure a static render if no animation is active or just became inactive
          renderCanvas();
        }
 
@@ -655,10 +752,10 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId, isFillModeActive]);
+     }, [paths, images, texts, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, textSettings, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId, isFillModeActive]);
 
 
-    const canvasCursor = isFillModeActive ? 'copy' : (isDraggingImage ? 'grabbing' : 'crosshair');
+    const canvasCursor = isFillModeActive ? 'copy' : (isDraggingImage ? 'grabbing' : (shapeSettings.currentShape === 'text' ? 'text' : 'crosshair'));
 
     return (
       <canvas
@@ -672,10 +769,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onTouchEnd={finishDrawing}
         className="h-full w-full touch-none bg-transparent"
         style={{ cursor: canvasCursor }}
-        data-ai-hint="abstract art images"
+        data-ai-hint="abstract art images text"
       />
     );
   }
 );
 
 DrawingCanvas.displayName = "DrawingCanvas";
+

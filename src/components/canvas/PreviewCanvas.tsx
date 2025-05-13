@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Path } from "@/types/drawing";
+import type { Path, CanvasImage, CanvasText } from "@/types/drawing";
 import type { DrawingTools } from "@/components/AppClient";
 import React, { useRef, useEffect, useState } from 'react';
 import { useTheme } from "next-themes";
@@ -17,12 +17,16 @@ import {
 
 interface PreviewCanvasProps {
   completedPaths: Path[]; 
+  completedImages: CanvasImage[];
+  completedTexts: CanvasText[];
   drawingTools: DrawingTools; 
   mainCanvasDimensions: { width: number; height: number }; 
 }
 
 export const PreviewCanvas = ({
   completedPaths,
+  completedImages,
+  completedTexts,
   drawingTools,
   mainCanvasDimensions,
 }: PreviewCanvasProps) => {
@@ -34,11 +38,36 @@ export const PreviewCanvas = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [lastMousePosition, setLastMousePosition] = useState<{ x: number; y: number } | null>(null);
+  const [loadedHtmlImages, setLoadedHtmlImages] = useState<Record<string, HTMLImageElement>>({});
   
   const resetPanZoom = () => {
     setPanOffset({ x: 0, y: 0 });
     setZoomLevel(1);
   };
+
+   useEffect(() => {
+        const imagesToLoad = completedImages.filter(imgData => !loadedHtmlImages[imgData.id] || loadedHtmlImages[imgData.id].src !== imgData.src);
+        if (imagesToLoad.length === 0) return;
+
+        const promises = imagesToLoad.map(imgData => 
+            new Promise<{id: string, img: HTMLImageElement}>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve({ id: imgData.id, img });
+                img.onerror = reject;
+                img.src = imgData.src;
+            })
+        );
+
+        Promise.all(promises).then(results => {
+            setLoadedHtmlImages(prev => {
+                const updated = { ...prev };
+                results.forEach(r => updated[r.id] = r.img);
+                return updated;
+            });
+        }).catch(error => console.error("Error loading images for preview:", error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [completedImages]);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,7 +79,6 @@ export const PreviewCanvas = ({
         if (width > 0 && height > 0 && canvas) {
           canvas.width = width;
           canvas.height = height;
-          // Trigger re-draw, which is handled by the main drawing useEffect
         }
       }
     });
@@ -70,13 +98,12 @@ export const PreviewCanvas = ({
     const canvas = canvasRef.current;
     if (!canvas || !wrapperRef.current) return;
 
-    // Ensure canvas has dimensions, otherwise drawing context might fail
     if (canvas.width === 0 || canvas.height === 0) {
         if (wrapperRef.current.clientWidth > 0 && wrapperRef.current.clientHeight > 0) {
             canvas.width = wrapperRef.current.clientWidth;
             canvas.height = wrapperRef.current.clientHeight;
         } else {
-            return; // Not ready
+            return; 
         }
     }
 
@@ -104,7 +131,7 @@ export const PreviewCanvas = ({
     ctx.translate(panOffset.x, panOffset.y);
     ctx.translate(-mainCanvasDimensions.width / 2, -mainCanvasDimensions.height / 2);
 
-    if (completedPaths && completedPaths.length > 0) {
+    if ((completedPaths && completedPaths.length > 0) || (completedImages && completedImages.length > 0) || (completedTexts && completedTexts.length > 0)) {
       completedPaths.forEach(path => {
         if (path.points.length >= 1) {
           ctx.beginPath();
@@ -112,13 +139,35 @@ export const PreviewCanvas = ({
           for (let i = 1; i < path.points.length; i++) {
             ctx.lineTo(path.points[i].x, path.points[i].y);
           }
-          ctx.strokeStyle = path.color; 
-          ctx.lineWidth = Math.max(0.1, path.lineWidth / zoomLevel);
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.stroke();
+          if (path.fillColor) {
+            ctx.fillStyle = path.fillColor;
+            ctx.fill();
+          }
+          if (path.lineWidth > 0) {
+            ctx.strokeStyle = path.color; 
+            ctx.lineWidth = Math.max(0.1, path.lineWidth / zoomLevel);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+          }
         }
       });
+
+      completedImages.forEach(imgData => {
+        const htmlImg = loadedHtmlImages[imgData.id];
+        if (htmlImg && htmlImg.complete) {
+            ctx.drawImage(htmlImg, imgData.x, imgData.y, imgData.width, imgData.height);
+        }
+      });
+
+      completedTexts.forEach(textData => {
+        ctx.font = `${textData.fontStyle} ${textData.fontWeight} ${textData.fontSize}px ${textData.fontFamily}`;
+        ctx.fillStyle = textData.color;
+        ctx.textAlign = textData.textAlign;
+        ctx.textBaseline = textData.textBaseline;
+        ctx.fillText(textData.text, textData.x, textData.y);
+      });
+
     } else {
       ctx.restore(); 
       ctx.save(); 
@@ -129,7 +178,7 @@ export const PreviewCanvas = ({
     }
     ctx.restore();
 
-  }, [completedPaths, drawingTools.backgroundColor, theme, systemTheme, panOffset, zoomLevel, mainCanvasDimensions, canvasRef, wrapperRef]);
+  }, [completedPaths, completedImages, completedTexts, loadedHtmlImages, drawingTools.backgroundColor, theme, systemTheme, panOffset, zoomLevel, mainCanvasDimensions, canvasRef, wrapperRef]);
 
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
     setIsPanning(true);
@@ -231,3 +280,4 @@ export const PreviewCanvas = ({
     </TooltipProvider>
   );
 };
+

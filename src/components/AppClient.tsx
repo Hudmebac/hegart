@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Point, Path, CanvasImage, ShapeType } from "@/types/drawing";
+import type { Point, Path, CanvasImage, ShapeType, CanvasText } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
 import { SymmetryControl } from '@/components/controls/SymmetrySettings';
@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, PaintBucket } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -62,8 +62,24 @@ export interface DrawingTools {
 
 export interface ShapeSettings {
   currentShape: ShapeType;
-  isFixedShape: boolean; // New: If true, shape is not subject to symmetry
-  excludeFromAnimation: boolean; // New: If true, shape is not animated
+  isFixedShape: boolean;
+  excludeFromAnimation: boolean;
+}
+
+export interface TextSettings {
+  content: string;
+  fontFamily: string;
+  fontSize: number; // in pixels
+  fontWeight: 'normal' | 'bold';
+  fontStyle: 'normal' | 'italic';
+  textAlign: CanvasTextAlign;
+  textBaseline: CanvasTextBaseline;
+}
+
+interface CanvasHistoryState {
+  paths: Path[];
+  images: CanvasImage[];
+  texts: CanvasText[];
 }
 
 type ControlSectionId = 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
@@ -82,14 +98,25 @@ const initialShapeSettings: ShapeSettings = {
   isFixedShape: false,
   excludeFromAnimation: false,
 };
+const initialTextSettings: TextSettings = {
+  content: "HegArt",
+  fontFamily: "Montserrat",
+  fontSize: 48,
+  fontWeight: 'normal',
+  fontStyle: 'normal',
+  textAlign: 'left',
+  textBaseline: 'top',
+};
 
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
-  const [pathHistory, setPathHistory] = useState<Path[][]>([]);
   const [images, setImages] = useState<CanvasImage[]>([]);
+  const [texts, setTexts] = useState<CanvasText[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+
+  const [history, setHistory] = useState<CanvasHistoryState[]>([]);
 
   const [symmetry, setSymmetry] = useState<SymmetrySettings>(initialSymmetrySettings);
   const [animation, setAnimation] = useState<AnimationSettings>(initialAnimationSettings);
@@ -105,6 +132,7 @@ export default function AppClient() {
     };
   });
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>(initialShapeSettings);
+  const [textSettings, setTextSettings] = useState<TextSettings>(initialTextSettings);
   const [isFillModeActive, setIsFillModeActive] = useState(false);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -124,6 +152,10 @@ export default function AppClient() {
   const [isRecording, setIsRecording] = useState(false);
 
   const isMobile = useIsMobile();
+
+  const snapshotState = useCallback(() => {
+    setHistory(prev => [...prev, { paths, images, texts }]);
+  }, [paths, images, texts]);
 
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
@@ -158,8 +190,7 @@ export default function AppClient() {
 
 
   const handlePathAdd = useCallback((newPath: Path) => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]);
-     // Augment the path with current shape settings for fixed/animation exclusion
+     snapshotState();
      const augmentedPath: Path = {
       ...newPath,
       isFixedShape: shapeSettings.isFixedShape,
@@ -168,17 +199,21 @@ export default function AppClient() {
      setPaths((prevPaths) => [...prevPaths, augmentedPath]);
      setCurrentPath([]);
      setSelectedImageId(null); 
-     // setIsFillModeActive(false); // Optionally turn off fill mode after drawing a shape
-  }, [paths, shapeSettings.isFixedShape, shapeSettings.excludeFromAnimation]);
+  }, [snapshotState, shapeSettings.isFixedShape, shapeSettings.excludeFromAnimation]);
+
+  const handleTextAdd = useCallback((newText: CanvasText) => {
+    snapshotState();
+    setTexts(prev => [...prev, newText]);
+    setSelectedImageId(null);
+  }, [snapshotState]);
 
   const handleFillPath = useCallback((pathIndex: number, fillColor: string) => {
-    setPathHistory(prev => [...prev, paths]);
+    snapshotState();
     setPaths(prevPaths => prevPaths.map((p, idx) => 
       idx === pathIndex ? { ...p, fillColor } : p
     ));
     toast({ title: "Shape Filled", description: "The selected shape has been filled." });
-    // setIsFillModeActive(false); // Optionally keep fill mode active
-  }, [paths, toast]);
+  }, [paths, toast, snapshotState]);
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
@@ -220,9 +255,10 @@ export default function AppClient() {
             originalWidth: img.naturalWidth,
             originalHeight: img.naturalHeight,
           };
+          snapshotState();
           setImages(prev => [...prev, newImage]);
           setSelectedImageId(newImage.id); 
-          setIsFillModeActive(false); // Turn off fill mode when uploading image
+          setIsFillModeActive(false); 
           toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
         };
         img.onerror = () => {
@@ -235,52 +271,50 @@ export default function AppClient() {
        toast({ variant: "destructive", title: "Error", description: "Could not read image file." });
     };
     reader.readAsDataURL(file);
-  }, [mainCanvasDimensions, toast]);
+  }, [mainCanvasDimensions, toast, snapshotState]);
 
   const handleImageUpdate = useCallback((updatedImage: CanvasImage) => {
+    // For dragging, we might not want to snapshot every tiny move.
+    // Snapshotting on drag end is better, but this requires more logic.
+    // For now, this simple update won't create undo states for each drag pixel.
+    // To make dragging undoable, snapshotState() would be called here.
     setImages(prevImages => prevImages.map(img => img.id === updatedImage.id ? updatedImage : img));
   }, []);
 
   const handleImageSelect = useCallback((id: string | null) => {
     setSelectedImageId(id);
-    if (id) setIsFillModeActive(false); // Turn off fill mode if an image is selected
+    if (id) setIsFillModeActive(false); 
   }, []);
 
 
   const handleClearCanvas = useCallback(() => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]);
+     snapshotState();
      setPaths([]);
      setCurrentPath([]);
      setImages([]);
+     setTexts([]);
      setSelectedImageId(null);
      setIsFillModeActive(false);
-     toast({ title: "Canvas Cleared", description: "Drawing and images have been cleared." });
-  }, [paths, toast]);
+     toast({ title: "Canvas Cleared", description: "Drawing, images, and text have been cleared." });
+  }, [snapshotState, toast]);
 
   const handleUndo = useCallback(() => {
-    if (pathHistory.length > 0) {
-        const previousPaths = pathHistory[pathHistory.length - 1];
-        setPaths(previousPaths);
-        setPathHistory((prevHistory) => prevHistory.slice(0, -1));
+    if (history.length > 0) {
+        const previousState = history[history.length - 1];
+        setPaths(previousState.paths);
+        setImages(previousState.images);
+        setTexts(previousState.texts);
+        setHistory((prevHistory) => prevHistory.slice(0, -1));
+        
         setCurrentPath([]); 
         setSelectedImageId(null); 
-        // setIsFillModeActive(false); // Don't change fill mode on undo
-        toast({ title: "Undo Successful", description: "Last drawing or fill action undone." });
-        return;
+        toast({ title: "Undo Successful", description: "Last action undone." });
+    } else {
+      toast({ title: "Nothing to Undo", description: "Canvas is at earliest state." });
     }
-
-    // Simplified image undo: remove last added if no path history
-    // More complex image undo (specific selected image) would need its own history
-    if (images.length > 0) { 
-        setImages(prev => prev.slice(0, -1));
-        setSelectedImageId(null); // Deselect if the removed image was selected
-        toast({ title: "Image Removed", description: "Last added image was removed."});
-        return;
-    }
-    toast({ title: "Nothing to Undo", description: "Canvas is empty or at earliest state." });
-  }, [pathHistory, paths, images, toast]);
+  }, [history, toast]);
   
-  const canUndo = pathHistory.length > 0 || images.length > 0;
+  const canUndo = history.length > 0;
 
 
   const handleSaveDrawing = useCallback(async () => {
@@ -333,12 +367,10 @@ export default function AppClient() {
 
       const drawStaticSymmetricPathOrFixed = (originalPath: Path) => {
         if (originalPath.isFixedShape) {
-          // Draw fixed shape once, without symmetry
           drawStaticPath(tempCtx, originalPath.points, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           return;
         }
 
-        // Existing symmetric drawing logic for non-fixed shapes
         const ctx = tempCtx;
         const canvas = tempCanvas;
         const centerX = canvas.width / 2;
@@ -421,6 +453,92 @@ export default function AppClient() {
         });
       });
 
+      texts.forEach(textData => {
+        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline, isFixedShape } = textData;
+        tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+        tempCtx.fillStyle = color;
+        tempCtx.textAlign = textAlign;
+        tempCtx.textBaseline = textBaseline;
+
+        if (isFixedShape) {
+            tempCtx.fillText(text, x, y);
+            return;
+        }
+
+        const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
+        const canvasCenterX = tempCanvas.width / 2;
+        const canvasCenterY = tempCanvas.height / 2;
+
+        for (let i = 0; i < numAxes; i++) {
+            const angle = (i * 2 * Math.PI) / numAxes;
+            
+            const transformAndDrawText = (originX: number, originY: number, applyMirrorX: boolean, applyMirrorY: boolean) => {
+                let tx = originX;
+                let ty = originY;
+                
+                // Save context for potential scaling if mirroring text content
+                tempCtx.save();
+
+                if (applyMirrorX) {
+                    tx = tempCanvas.width - tx;
+                    // If text needs to flip, e.g. for right-to-left reading after mirror
+                    // tempCtx.translate(tempCanvas.width, 0); tempCtx.scale(-1, 1);
+                }
+                if (applyMirrorY) {
+                    ty = tempCanvas.height - ty;
+                     // tempCtx.translate(0, tempCanvas.height); tempCtx.scale(1, -1);
+                }
+                
+                if (numAxes > 1) {
+                    tempCtx.translate(canvasCenterX, canvasCenterY);
+                    tempCtx.rotate(angle);
+                    tempCtx.translate(-canvasCenterX, -canvasCenterY);
+                }
+                
+                // Apply mirror translation *after* rotation if text itself is not scaled/flipped
+                let finalDrawX = tx;
+                let finalDrawY = ty;
+
+                if (numAxes > 1) { // If rotation applied, tx/ty are already relative to canvas center
+                    const translatedForRotX = originX - canvasCenterX;
+                    const translatedForRotY = originY - canvasCenterY;
+                    let effectiveX = translatedForRotX;
+                    let effectiveY = translatedForRotY;
+
+                    if(applyMirrorX) effectiveX = (tempCanvas.width - originX) - canvasCenterX;
+                    if(applyMirrorY) effectiveY = (tempCanvas.height - originY) - canvasCenterY;
+                    
+                    // This part is tricky if mirroring should flip text content. Keeping simple: transform origin.
+                    // For complex text mirroring, a dedicated function is needed.
+                    // This simplified version mirrors the *start point* of the text.
+                    
+                    let pointToRotateX = originX;
+                    let pointToRotateY = originY;
+
+                    if(applyMirrorX) pointToRotateX = tempCanvas.width - originX;
+                    if(applyMirrorY) pointToRotateY = tempCanvas.height - originY;
+                    
+                    const tX = pointToRotateX - canvasCenterX;
+                    const tY = pointToRotateY - canvasCenterY;
+                    finalDrawX = tX * Math.cos(angle) - tY * Math.sin(angle) + canvasCenterX;
+                    finalDrawY = tX * Math.sin(angle) + tY * Math.cos(angle) + canvasCenterY;
+                } else { // No rotation
+                    if(applyMirrorX) finalDrawX = tempCanvas.width - originX;
+                    if(applyMirrorY) finalDrawY = tempCanvas.height - originY;
+                }
+                
+                tempCtx.fillText(text, finalDrawX, finalDrawY);
+                tempCtx.restore(); // Restore for next symmetric instance or text object
+            };
+            
+            transformAndDrawText(x, y, false, false);
+            if (symmetry.mirrorX) transformAndDrawText(x, y, true, false);
+            if (symmetry.mirrorY) transformAndDrawText(x, y, false, true);
+            if (symmetry.mirrorX && symmetry.mirrorY) transformAndDrawText(x, y, true, true);
+        }
+    });
+
+
       try {
         await Promise.all(imageLoadPromises);
         const imageURL = tempCanvas.toDataURL('image/png');
@@ -430,15 +548,16 @@ export default function AppClient() {
         link.click();
         toast({ title: "Drawing Saved", description: "Image exported as PNG." });
       } catch (error) {
-        console.error("Could not save drawing due to image loading error:", error);
-        toast({ variant: "destructive", title: "Save Error", description: "Failed to process images for saving." });
+        console.error("Could not save drawing due to image/text processing error:", error);
+        toast({ variant: "destructive", title: "Save Error", description: "Failed to process elements for saving." });
       }
     }
-  }, [canvasRef, paths, images, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
+  }, [canvasRef, paths, images, texts, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
 
   const handleResetSettings = useCallback(() => {
     setSymmetry(initialSymmetrySettings);
     setAnimation(initialAnimationSettings);
+    setTextSettings(initialTextSettings);
     
     const currentThemeResolved = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentThemeResolved === 'dark';
@@ -448,9 +567,9 @@ export default function AppClient() {
       fillColor: isDarkMode ? '#FFFFFF40' : '#00000040',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     });
-    setShapeSettings(initialShapeSettings); // This will reset isFixedShape and excludeFromAnimation
+    setShapeSettings(initialShapeSettings); 
     handleClearCanvas(); 
-    setPathHistory([]); 
+    setHistory([]); 
     setSelectedImageId(null);
     setIsFillModeActive(false);
     toast({ title: "Settings Reset", description: "All settings and canvas cleared." });
@@ -518,11 +637,11 @@ export default function AppClient() {
   const toggleFillMode = useCallback(() => {
     setIsFillModeActive(prev => {
         const nextState = !prev;
-        if (nextState) { // Entering fill mode
+        if (nextState) { 
             setSelectedImageId(null); 
             setCurrentPath([]); 
             toast({ title: "Fill Mode Activated", description: "Click on shapes to fill them.", duration: 2000 });
-        } else { // Exiting fill mode
+        } else { 
             toast({ title: "Fill Mode Deactivated", description: "Drawing mode re-enabled.", duration: 2000 });
         }
         return nextState;
@@ -569,7 +688,7 @@ export default function AppClient() {
   
   const controlPanelSections: { name: ControlSectionId; label: string; icon: React.ElementType }[] = [
     { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
-    { name: 'shapes', label: 'Shapes', icon: ShapesIcon },
+    { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon }, // Updated label
     { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
     { name: 'image', label: 'Image Controls', icon: ImageIcon },
     { name: 'symmetry', label: 'Symmetry', icon: SymmetryIcon },
@@ -594,7 +713,7 @@ export default function AppClient() {
                             sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} />;
                             break;
                         case 'shapes':
-                            sectionContent = <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
+                            sectionContent = <ShapeControl shapeSettings={shapeSettings} onShapeSettingsChange={setShapeSettings} textSettings={textSettings} onTextSettingsChange={setTextSettings} />;
                             break;
                         case 'tools':
                             sectionContent = <DrawingToolControl tools={tools} onToolsChange={setTools} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} />;
@@ -645,7 +764,7 @@ export default function AppClient() {
             sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode}/></div>;
                             break;
           case 'shapes':
-            sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} /></div>;
+            sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapeSettings={shapeSettings} onShapeSettingsChange={setShapeSettings} textSettings={textSettings} onTextSettingsChange={setTextSettings} /></div>;
             break;
           case 'tools':
             sectionContent = <div key="tools" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><DrawingToolControl tools={tools} onToolsChange={setTools} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} /></div>;
@@ -792,14 +911,17 @@ export default function AppClient() {
                   ref={canvasRef}
                   paths={paths}
                   images={images}
+                  texts={texts}
                   currentPath={currentPath}
                   onCurrentPathChange={setCurrentPath}
                   onPathAdd={handlePathAdd}
+                  onTextAdd={handleTextAdd}
                   onFillPath={handleFillPath}
                   symmetrySettings={symmetry}
                   animationSettings={animation}
                   drawingTools={tools}
                   shapeSettings={shapeSettings}
+                  textSettings={textSettings}
                   backgroundColor={tools.backgroundColor}
                   selectedImageId={selectedImageId}
                   onImageSelect={handleImageSelect}
@@ -812,6 +934,8 @@ export default function AppClient() {
             <div className="absolute top-4 right-4 z-30 w-[clamp(250px,25vw,400px)] h-[clamp(150px,20vw,300px)] bg-card border-2 border-primary shadow-2xl rounded-lg p-1 overflow-hidden">
               <PreviewCanvas
                 completedPaths={paths}
+                completedImages={images}
+                completedTexts={texts}
                 drawingTools={tools}
                 mainCanvasDimensions={mainCanvasDimensions}
               />
@@ -823,3 +947,4 @@ export default function AppClient() {
     </SidebarProvider>
   );
 }
+

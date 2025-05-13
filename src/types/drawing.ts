@@ -26,6 +26,22 @@ export interface CanvasImage {
   scale?: number;    // Optional: uniform scale factor
 }
 
+export interface CanvasText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontFamily: string;
+  fontSize: number; // in px
+  fontWeight: 'normal' | 'bold';
+  fontStyle: 'normal' | 'italic';
+  color: string;
+  textAlign: CanvasTextAlign;
+  textBaseline: CanvasTextBaseline;
+  isFixedShape?: boolean;
+  excludeFromAnimation?: boolean;
+}
+
 export type ShapeType = 
   | 'freehand' 
   | 'line' 
@@ -41,5 +57,7 @@ export type ShapeType =
   | 'cloud'
   | 'speechBubble'
   | 'gear'
-  | 'checkMark';
+  | 'checkMark'
+  | 'text'; // Added text shape
+
 

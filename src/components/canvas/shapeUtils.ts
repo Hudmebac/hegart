@@ -22,8 +22,24 @@ function generateRegularPolygon(sides: number, start: Point, end: Point): Point[
 
     if (sides === 3) { 
          startAngle = Math.atan2(dy, dx) - Math.PI / 2;
-    } else if (sides === 4) { 
-         startAngle = Math.atan2(dy, dx) - Math.PI / 4; 
+    } else if (sides === 4) { // Square (rectangle)
+         // For a rectangle aligned with the drag direction:
+        const angle = Math.atan2(dy, dx);
+        const halfWidth = Math.abs(dx) / 2;
+        const halfHeight = Math.abs(dy) / 2;
+        // This creates a bounding box based on start/end, not a rotated square.
+        // For a true square based on start/end as diagonal:
+        if (start.x !== end.x && start.y !== end.y) {
+             const sideLength = Math.min(Math.abs(dx), Math.abs(dy)); // This isn't quite right for diagonal
+             // A true square from diagonal uses specific rotation logic
+             // For simplicity, let's keep the behavior aligned with other polygons (outer radius)
+             // The current generateRegularPolygon creates a square rotated to align one side with drag vector.
+             startAngle = Math.atan2(dy, dx) - Math.PI / 4; 
+        } else if (start.x === end.x) { // Vertical line
+            startAngle = -Math.PI / 4;
+        } else { // Horizontal line
+            startAngle = Math.PI / 4;
+        }
     } else if (sides === 5 || sides === 6) { 
          startAngle = Math.atan2(dy, dx) - Math.PI / 2;
     }
@@ -331,7 +347,7 @@ export function drawShape(
 ): Point[] {
     let points: Point[] = [];
 
-    if (start.x === end.x && start.y === end.y && shape !== 'freehand' && shape !== 'line') {
+    if (start.x === end.x && start.y === end.y && shape !== 'freehand' && shape !== 'line' && shape !== 'text') {
         const tinyOffset = 1;
         end = { x: start.x + tinyOffset, y: start.y + tinyOffset };
     }
@@ -344,8 +360,14 @@ export function drawShape(
         case 'triangle':
             points = generateRegularPolygon(3, start, end);
             break;
-        case 'square':
-            points = generateRegularPolygon(4, start, end);
+        case 'square': // rectangle based on start/end as diagonal corners
+            points = [
+                { x: start.x, y: start.y },
+                { x: end.x, y: start.y },
+                { x: end.x, y: end.y },
+                { x: start.x, y: end.y },
+                { x: start.x, y: start.y }, // Close the shape
+            ];
             break;
         case 'circle':
             points = generateCircle(start, end);
@@ -380,9 +402,12 @@ export function drawShape(
         case 'checkMark':
             points = generateCheckMark(start, end);
             break;
+        case 'text': // Text is handled differently, no points generated here
+             return []; 
         case 'freehand': 
              return [start, end]; 
         default:
+            console.warn(`Unsupported shape type: ${shape}`);
             return [];
     }
 
