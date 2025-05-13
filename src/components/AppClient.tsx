@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIcon, ListCollapse } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -63,8 +63,9 @@ export interface ShapeSettings {
   currentShape: ShapeType;
 }
 
-type ActiveSectionType = 'preview' | 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
-type HeaderSelectionType = ActiveSectionType | 'all';
+type ControlSectionId = 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
+type HeaderControlSelectionId = ControlSectionId | 'all';
+
 
 const initialSymmetrySettings: SymmetrySettings = { mirrorX: false, mirrorY: false, rotationalAxes: 1 };
 const initialAnimationSettings: AnimationSettings = {
@@ -100,7 +101,8 @@ export default function AppClient() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
   
-  const [activeSections, setActiveSections] = useState<Set<HeaderSelectionType>>(() => new Set<HeaderSelectionType>(['shapes']));
+  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>(['shapes']));
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
   
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
@@ -447,28 +449,30 @@ export default function AppClient() {
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
   const toggleSidebarPin = () => setIsSidebarPinned(!isSidebarPinned);
 
-  const handleSectionSelect = (sectionName: HeaderSelectionType) => {
+  const togglePreview = () => setIsPreviewVisible(prev => !prev);
+
+  const handleSectionSelect = (sectionName: HeaderControlSelectionId) => {
     setActiveSections(prev => {
         const newActive = new Set(prev);
 
         if (sectionName === 'all') {
-            if (newActive.has('all')) { // Toggle 'all' off
+            if (newActive.has('all')) { 
                 newActive.delete('all');
-                if (newActive.size === 0) newActive.add('shapes'); // Default if 'all' was the only one
-            } else { // Toggle 'all' on, and turn off others
+                if (newActive.size === 0) newActive.add('shapes'); 
+            } else { 
                 newActive.clear();
                 newActive.add('all');
             }
-        } else { // Specific section clicked
-            newActive.delete('all'); // Turn off 'all' if a specific section is clicked
+        } else { 
+            newActive.delete('all'); 
 
             if (newActive.has(sectionName)) {
-                newActive.delete(sectionName as ActiveSectionType);
+                newActive.delete(sectionName as ControlSectionId);
             } else {
-                newActive.add(sectionName as ActiveSectionType);
+                newActive.add(sectionName as ControlSectionId);
             }
 
-            if (newActive.size === 0) { // If all toggled off, default to 'shapes'
+            if (newActive.size === 0) { 
                 newActive.add('shapes');
             }
         }
@@ -482,9 +486,7 @@ export default function AppClient() {
     }
   };
   
-  const headerSections: { name: HeaderSelectionType; label: string; icon: React.ElementType }[] = [
-    { name: 'all', label: 'All Sections', icon: ListCollapse },
-    { name: 'preview', label: 'Preview', icon: PreviewIcon },
+  const controlPanelSections: { name: ControlSectionId; label: string; icon: React.ElementType }[] = [
     { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
     { name: 'shapes', label: 'Shapes', icon: ShapesIcon },
     { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
@@ -493,22 +495,20 @@ export default function AppClient() {
     { name: 'animation', label: 'Animation', icon: AnimationIcon },
   ];
 
+  const allControlsHeaderConfig = { name: 'all' as const, label: 'All Control Sections', icon: ListCollapse };
+  const previewHeaderConfig = { name: 'preview' as const, label: 'Toggle Preview', icon: PreviewIconLucide };
+
+
   const renderActiveSectionContent = () => {
     const commonProps = { mainCanvasDimensions };
-    const sectionOrder: ActiveSectionType[] = ['preview', 'actions', 'shapes', 'tools', 'image', 'symmetry', 'animation'];
+    const controlSectionOrder: ControlSectionId[] = ['actions', 'shapes', 'tools', 'image', 'symmetry', 'animation'];
 
     if (activeSections.has('all')) {
         return (
-            <Accordion type="multiple" className="w-full space-y-1" defaultValue={[]}>
-                {sectionOrder.map(name => {
-                    const sectionConfig = headerSections.find(s => s.name === name);
-                    if (!sectionConfig) return null;
-                    
+            <Accordion type="multiple" className="w-full space-y-1" defaultValue={['shapes']}>
+                {controlPanelSections.map(sectionConfig => {
                     let sectionContent: JSX.Element | null = null;
-                    switch (name) {
-                        case 'preview':
-                            sectionContent = <PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
-                            break;
+                    switch (sectionConfig.name) {
                         case 'actions':
                             sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
                             break;
@@ -531,7 +531,7 @@ export default function AppClient() {
                     if (!sectionContent) return null;
 
                     return (
-                        <AccordionItem value={name} key={name} className="border-b-0 rounded-md border bg-card shadow-sm overflow-hidden">
+                        <AccordionItem value={sectionConfig.name} key={sectionConfig.name} className="border-b-0 rounded-md border bg-card shadow-sm overflow-hidden">
                             <AccordionTrigger className="px-4 py-3 hover:no-underline text-sm font-medium">
                                 <div className="flex items-center gap-2">
                                     <sectionConfig.icon className="h-4 w-4 text-muted-foreground" />
@@ -549,20 +549,17 @@ export default function AppClient() {
     }
 
     if (activeSections.size === 0) {
-      return <div className="p-4 text-muted-foreground">Select a section from the header or "All".</div>;
+      return <div className="p-4 text-muted-foreground">Select a control section from the header or "All".</div>;
     }
 
     const componentsToRender: JSX.Element[] = [];
-    for (const sectionName of sectionOrder) {
+    for (const sectionName of controlSectionOrder) {
       if (activeSections.has(sectionName)) {
         let sectionContent: JSX.Element | null = null;
-        const sectionConfig = headerSections.find(s => s.name === sectionName);
+        const sectionConfig = controlPanelSections.find(s => s.name === sectionName);
         if (!sectionConfig) continue;
 
         switch (sectionName) {
-          case 'preview':
-            sectionContent = <div key="preview" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} /></div>;
-            break;
           case 'actions':
             sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} /></div>;
             break;
@@ -608,7 +605,35 @@ export default function AppClient() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            {headerSections.map(section => (
+             <Tooltip key={previewHeaderConfig.name}>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant={isPreviewVisible ? "secondary" : "ghost"} 
+                    size="icon" 
+                    onClick={togglePreview}
+                    aria-pressed={isPreviewVisible}
+                  >
+                    <previewHeaderConfig.icon className="h-5 w-5" />
+                    <span className="sr-only">{previewHeaderConfig.label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>{previewHeaderConfig.label}</p></TooltipContent>
+              </Tooltip>
+              <Tooltip key={allControlsHeaderConfig.name}>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant={activeSections.has(allControlsHeaderConfig.name) ? "secondary" : "ghost"} 
+                    size="icon" 
+                    onClick={() => handleSectionSelect(allControlsHeaderConfig.name)}
+                    aria-pressed={activeSections.has(allControlsHeaderConfig.name)}
+                  >
+                    <allControlsHeaderConfig.icon className="h-5 w-5" />
+                    <span className="sr-only">{allControlsHeaderConfig.label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>{allControlsHeaderConfig.label}</p></TooltipContent>
+              </Tooltip>
+            {controlPanelSections.map(section => (
               <Tooltip key={section.name}>
                 <TooltipTrigger asChild>
                   <Button 
@@ -639,7 +664,7 @@ export default function AppClient() {
             <ThemeToggle />
           </div>
         </header>
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative"> {/* Added relative positioning here */}
           <Sidebar
             className="border-r md:w-80 lg:w-96 z-10"
             collapsible={isMobile ? "none" : "icon"} 
@@ -675,10 +700,18 @@ export default function AppClient() {
                 />
              </div>
           </SidebarInset>
+          {isPreviewVisible && (
+            <div className="absolute top-4 right-4 z-30 w-[clamp(250px,25vw,400px)] h-[clamp(150px,20vw,300px)] bg-card border-2 border-primary shadow-2xl rounded-lg p-1 overflow-hidden">
+              <PreviewCanvas
+                completedPaths={paths}
+                drawingTools={tools}
+                mainCanvasDimensions={mainCanvasDimensions}
+              />
+            </div>
+          )}
         </div>
       </div>
       </TooltipProvider>
     </SidebarProvider>
   );
 }
-
