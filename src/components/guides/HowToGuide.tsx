@@ -5,7 +5,7 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Zap, Maximize, RotateCw, Contrast, Settings, Palette, Shapes, Image as ImageIcon, Type, SlidersHorizontal, MousePointer2, Pin, ListCollapse, HelpCircle, PaletteIcon, ShapesIcon, ImageIcon as ImageIconLucide, SymmetryIcon, AnimationIcon, SlidersHorizontal as ActionsIcon, Presentation as PreviewIconLucide } from "lucide-react";
+import { Zap, Maximize, RotateCw, Contrast, Settings, Palette, Shapes, Image, Type, SlidersHorizontal, MousePointer2, Pin, PinOff, ListCollapse, HelpCircle, Wand2, Presentation } from "lucide-react";
 
 export function HowToGuide() {
   return (
@@ -37,9 +37,9 @@ export function HowToGuide() {
           <AccordionTrigger className="text-xl font-semibold"><MousePointer2 className="mr-2 h-5 w-5" />Drawing Basics</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
             <Card>
-              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ShapesIcon className="h-5 w-5"/>Drawing Modes (Shapes & Text Section)</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Shapes className="h-5 w-5"/>Drawing Modes (Shapes & Text Section)</CardTitle></CardHeader>
               <CardContent>
-                <p className="mb-2">Access drawing modes from the "Shapes & Text" section in the sidebar (or via header icon <ShapesIcon className="inline h-4 w-4"/>).</p>
+                <p className="mb-2">Access drawing modes from the "Shapes & Text" section in the sidebar (or via header icon <Shapes className="inline h-4 w-4"/>).</p>
                 <Accordion type="single" collapsible className="w-full">
                   <AccordionItem value="freehand">
                     <AccordionTrigger>Freehand Drawing</AccordionTrigger>
@@ -66,9 +66,9 @@ export function HowToGuide() {
               </CardContent>
             </Card>
             <Card>
-              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><PaletteIcon className="h-5 w-5"/>Drawing Tools</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Palette className="h-5 w-5"/>Drawing Tools</CardTitle></CardHeader>
               <CardContent>
-                <p className="mb-2">Find these in the "Drawing Tools" section (header icon <PaletteIcon className="inline h-4 w-4"/>).</p>
+                <p className="mb-2">Find these in the "Drawing Tools" section (header icon <Palette className="inline h-4 w-4"/>).</p>
                 <ul className="list-disc list-inside space-y-2 pl-4">
                   <li><strong>Stroke Color:</strong> Sets the color for lines and text. Use the color picker or type a hex code.</li>
                   <li><strong>Fill Color:</strong> Sets the color used for filling shapes.
@@ -83,9 +83,9 @@ export function HowToGuide() {
               </CardContent>
             </Card>
              <Card>
-              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ImageIconLucide className="h-5 w-5"/>Image Integration</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Image className="h-5 w-5"/>Image Integration</CardTitle></CardHeader>
               <CardContent>
-                <p className="mb-2">Access via the "Image Controls" section (header icon <ImageIconLucide className="inline h-4 w-4"/>).</p>
+                <p className="mb-2">Access via the "Image Controls" section (header icon <Image className="inline h-4 w-4"/>).</p>
                 <ul className="list-disc list-inside space-y-2 pl-4">
                     <li><strong>Upload Image:</strong> Click "Select Image File" to choose an image from your device. It will be added to the center of the canvas.</li>
                     <li><strong>Moving Images:</strong> Once an image is added, it's automatically selected. Click and drag it to reposition. Clicking on an unselected image will select it.</li>
@@ -97,9 +97,9 @@ export function HowToGuide() {
         </AccordionItem>
 
         <AccordionItem value="symmetry-controls">
-          <AccordionTrigger className="text-xl font-semibold"><SymmetryIcon className="mr-2 h-5 w-5" />Symmetry Controls</AccordionTrigger>
+          <AccordionTrigger className="text-xl font-semibold"><Wand2 className="mr-2 h-5 w-5" />Symmetry Controls</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
-            <p className="mb-2">Found in the "Symmetry" section (header icon <SymmetryIcon className="inline h-4 w-4"/>). These controls affect your drawing in real-time.</p>
+            <p className="mb-2">Found in the "Symmetry" section (header icon <Wand2 className="inline h-4 w-4"/>). These controls affect your drawing in real-time.</p>
             <ul className="list-disc list-inside space-y-2 pl-4">
               <li><strong>Mirror X-Axis:</strong> Toggles mirroring across a vertical line in the center of the canvas.</li>
               <li><strong>Mirror Y-Axis:</strong> Toggles mirroring across a horizontal line in the center of the canvas.</li>
@@ -115,9 +115,9 @@ export function HowToGuide() {
         </AccordionItem>
 
         <AccordionItem value="animation-controls">
-          <AccordionTrigger className="text-xl font-semibold"><AnimationIcon className="mr-2 h-5 w-5" />Animation Controls</AccordionTrigger>
+          <AccordionTrigger className="text-xl font-semibold"><Zap className="mr-2 h-5 w-5" />Animation Controls</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
-             <p className="mb-2">Located in the "Animation" section (header icon <AnimationIcon className="inline h-4 w-4"/>). These add dynamic effects to your artwork.</p>
+             <p className="mb-2">Located in the "Animation" section (header icon <Zap className="inline h-4 w-4"/>). These add dynamic effects to your artwork.</p>
             <ul className="list-disc list-inside space-y-3 pl-4">
               <li>
                 <strong>Line Width Pulse (<Zap className="inline h-4 w-4"/>):</strong>
@@ -154,9 +154,9 @@ export function HowToGuide() {
         </AccordionItem>
         
         <AccordionItem value="actions-utilities">
-          <AccordionTrigger className="text-xl font-semibold"><ActionsIcon className="mr-2 h-5 w-5" />Actions & Utilities</AccordionTrigger>
+          <AccordionTrigger className="text-xl font-semibold"><SlidersHorizontal className="mr-2 h-5 w-5" />Actions & Utilities</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
-             <p className="mb-2">Access these essential tools from the "Actions" section in the sidebar (header icon <ActionsIcon className="inline h-4 w-4"/>).</p>
+             <p className="mb-2">Access these essential tools from the "Actions" section in the sidebar (header icon <SlidersHorizontal className="inline h-4 w-4"/>).</p>
             <ul className="list-disc list-inside space-y-2 pl-4">
               <li><strong>Undo:</strong> Reverts the last drawing, fill, image addition, or text addition. Limited by history.</li>
               <li><strong>Clear Canvas:</strong> Removes all paths, images, and text from the canvas. This action also clears the undo history.</li>
@@ -181,9 +181,9 @@ export function HowToGuide() {
         </AccordionItem>
 
         <AccordionItem value="preview-window">
-          <AccordionTrigger className="text-xl font-semibold"><PreviewIconLucide className="mr-2 h-5 w-5" />Preview Window</AccordionTrigger>
+          <AccordionTrigger className="text-xl font-semibold"><Presentation className="mr-2 h-5 w-5" />Preview Window</AccordionTrigger>
           <AccordionContent className="space-y-3 pt-2">
-            <p>Toggle the Preview Window using its icon (<PreviewIconLucide className="inline h-4 w-4"/>) in the header.</p>
+            <p>Toggle the Preview Window using its icon (<Presentation className="inline h-4 w-4"/>) in the header.</p>
             <ul className="list-disc list-inside space-y-2 pl-4">
               <li><strong>Purpose:</strong> Shows a static, un-animated, and non-symmetrically-rendered version of your completed drawing elements (paths, images, text). This is helpful for inspecting details without dynamic effects.</li>
               <li><strong>Location:</strong> Appears as a draggable and resizable box in the top-right corner of the application.</li>
@@ -200,7 +200,7 @@ export function HowToGuide() {
         </AccordionItem>
 
         <AccordionItem value="sidebar-header-management">
-          <AccordionTrigger className="text-xl font-semibold"><Pin className="mr-2 h-5 w-5" />Sidebar & Header Controls</AccordionTrigger>
+          <AccordionTrigger className="text-xl font-semibold"><Pin className="mr-2 h-5 w-5" />Sidebar & Header Management</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-2">
             <Card>
                 <CardHeader><CardTitle className="text-lg">Sidebar Management</CardTitle></CardHeader>
@@ -221,14 +221,14 @@ export function HowToGuide() {
                 <CardContent>
                     <p className="mb-2">The icons in the header provide quick access to different control sections in the sidebar:</p>
                     <ul className="list-disc list-inside space-y-1 pl-4">
-                        <li><PreviewIconLucide className="inline h-4 w-4 mr-1"/> Toggles the Preview Window.</li>
+                        <li><Presentation className="inline h-4 w-4 mr-1"/> Toggles the Preview Window.</li>
                         <li><ListCollapse className="inline h-4 w-4 mr-1"/> Toggles "All Sections" view in the sidebar. When active, all control sections are shown as collapsible accordions.</li>
-                        <li><ActionsIcon className="inline h-4 w-4 mr-1"/> Shows/Hides the "Actions" section.</li>
-                        <li><ShapesIcon className="inline h-4 w-4 mr-1"/> Shows/Hides the "Shapes & Text" section.</li>
-                        <li><PaletteIcon className="inline h-4 w-4 mr-1"/> Shows/Hides the "Drawing Tools" section.</li>
-                        <li><ImageIconLucide className="inline h-4 w-4 mr-1"/> Shows/Hides the "Image Controls" section.</li>
-                        <li><SymmetryIcon className="inline h-4 w-4 mr-1"/> Shows/Hides the "Symmetry" section.</li>
-                        <li><AnimationIcon className="inline h-4 w-4 mr-1"/> Shows/Hides the "Animation" section.</li>
+                        <li><SlidersHorizontal className="inline h-4 w-4 mr-1"/> Shows/Hides the "Actions" section.</li>
+                        <li><Shapes className="inline h-4 w-4 mr-1"/> Shows/Hides the "Shapes & Text" section.</li>
+                        <li><Palette className="inline h-4 w-4 mr-1"/> Shows/Hides the "Drawing Tools" section.</li>
+                        <li><Image className="inline h-4 w-4 mr-1"/> Shows/Hides the "Image Controls" section.</li>
+                        <li><Wand2 className="inline h-4 w-4 mr-1"/> Shows/Hides the "Symmetry" section.</li>
+                        <li><Zap className="inline h-4 w-4 mr-1"/> Shows/Hides the "Animation" section.</li>
                     </ul>
                     <p className="mt-2">You can select multiple icons to show those specific sections, or select the "All Sections" icon. If no specific section is selected, a default (usually "Shapes & Text") might be shown or a prompt to select one.</p>
                 </CardContent>
@@ -248,3 +248,4 @@ export function HowToGuide() {
     </div>
   );
 }
+

@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Point, Path, CanvasImage, ShapeType, CanvasText } from "@/types/drawing";
@@ -16,8 +15,8 @@ import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/compon
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
-import { Button } from '@/components/ui/button';
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -482,7 +481,7 @@ export default function AppClient() {
                     ty = tempCanvas.height - ty;
                 }
                 
-                if (numAxes > 1) {
+                if (numAxes > 1) { 
                     tempCtx.translate(canvasCenterX, canvasCenterY);
                     tempCtx.rotate(angle);
                     tempCtx.translate(-canvasCenterX, -canvasCenterY);
@@ -677,7 +676,7 @@ export default function AppClient() {
     { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
     { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon }, 
     { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
-    { name: 'image', label: 'Image Controls', icon: ImageIcon },
+    { name: 'image', label: 'Image Controls', icon: ImageIconLucide },
     { name: 'symmetry', label: 'Symmetry', icon: SymmetryIcon },
     { name: 'animation', label: 'Animation', icon: AnimationIcon },
   ];
@@ -783,11 +782,8 @@ export default function AppClient() {
     : (newOpenState: boolean) => {
         if (!isMobile) {
           if (!newOpenState && isSidebarPinned) {
-            // If an internal action (e.g. hypothetical internal collapse button) tries to close it while pinned, unpin it.
             setIsSidebarPinned(false);
           }
-          // Explicit pinning/unpinning is handled by the Pin button.
-          // Hover behavior handles temporary expansion when unpinned.
         }
       };
 
@@ -865,12 +861,10 @@ export default function AppClient() {
             </Tooltip>
              <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link href="/how-to">
-                      <HelpCircle className="h-5 w-5" />
-                      <span className="sr-only">How to Use #HegArt</span>
-                    </Link>
-                  </Button>
+                  <Link href="/how-to" className={buttonVariants({ variant: "ghost", size: "icon" })}>
+                    <HelpCircle className="h-5 w-5" />
+                    <span className="sr-only">How to Use #HegArt</span>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent><p>How to Use #HegArt</p></TooltipContent>
               </Tooltip>
@@ -945,4 +939,3 @@ export default function AppClient() {
     </SidebarProvider>
   );
 }
-
