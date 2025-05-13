@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: '#HegArt - Symmetric Art Generator', 
   icons: {
     icon: "https://heggie.netlify.app/favicon.ico"
-  },
+ },
   description: 'Create beautiful symmetric and animated art.',
 };
 

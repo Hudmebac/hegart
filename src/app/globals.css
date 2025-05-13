@@ -43,28 +43,28 @@ body {
     --sidebar-ring: 180 100% 25.1%;
   }
   .dark {
-    --background: 0 0% 7.1%; /* #121212 */
+    --background: 0 0% 7%; /* #121212 */
     --foreground: 0 0% 98%;
-    --card: 0 0% 7.1%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 7.1%;
+    --popover: 0 0% 7%;
     --popover-foreground: 0 0% 98%;
-    --primary: 180 100% 30%; /* Teal, slightly lighter for dark mode */
-    --primary-foreground: 0 0% 98%;
-    --secondary: 210 40% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 210 40% 12%;
-    --muted-foreground: 210 40% 60%;
-    --accent: 19.8 100% 45.1%; /* Orange #E65100 */
-    --accent-foreground: 0 0% 98%;
+    --primary: 25.9 100% 50%; /* Orange #FF6B00 */
+    --primary-foreground: 0 0% 7%;
+    --secondary: 19.8 100% 45.1%; /* Orange #E65100 */
+    --secondary-foreground: 0 0% 7%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 7%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 210 40% 18%;
-    --input: 210 40% 18%;
-    --ring: 180 100% 30%; /* Teal for ring */
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 25.9 100% 50%; /* Orange for ring */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
+    --chart-3: 25.9 100% 50%; /* Orange */
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
     --sidebar-background: 0 0% 10%; /* Darker sidebar */
