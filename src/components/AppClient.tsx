@@ -4,14 +4,30 @@
 import type { Point, Path, CanvasImage, ShapeType } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
-import { ControlPanel } from '@/components/controls/ControlPanel';
-import { Sidebar, SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { SymmetryControl } from '@/components/controls/SymmetrySettings';
+import { AnimationControl } from '@/components/controls/AnimationSettings';
+import { DrawingToolControl } from '@/components/controls/DrawingTools';
+import { ShapeControl } from '@/components/controls/ShapeSettings';
+import { ActionToolbar } from '@/components/controls/ActionToolbar';
+import { PreviewCanvas } from '@/components/canvas/PreviewCanvas';
+import { ImageUploadControl } from '@/components/controls/ImageUploadControl';
+
+import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
-import { Menu } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIcon, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 
 export interface SymmetrySettings {
   mirrorX: boolean;
@@ -22,13 +38,13 @@ export interface SymmetrySettings {
 export interface AnimationSettings {
   isPulsing: boolean;
   pulseSpeed: number;
-  pulseIntensity: number; 
+  pulseIntensity: number;
   isScaling: boolean;
   scaleSpeed: number;
-  scaleIntensity: number; 
+  scaleIntensity: number;
   isSpinning: boolean;
-  spinSpeed: number; 
-  spinDirectionChangeFrequency: number; 
+  spinSpeed: number;
+  spinDirectionChangeFrequency: number;
 }
 
 export interface DrawingTools {
@@ -41,13 +57,14 @@ export interface ShapeSettings {
   currentShape: ShapeType;
 }
 
+type ActiveSectionType = 'preview' | 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
+
 const initialSymmetrySettings: SymmetrySettings = { mirrorX: false, mirrorY: false, rotationalAxes: 1 };
 const initialAnimationSettings: AnimationSettings = {
   isPulsing: false, pulseSpeed: 5, pulseIntensity: 4,
   isScaling: false, scaleSpeed: 2, scaleIntensity: 0.1,
   isSpinning: false, spinSpeed: 30, spinDirectionChangeFrequency: 5,
 };
-// Initial tool colors will be set by theme effect
 const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor'> = { lineWidth: 5 };
 const initialShapeSettings: ShapeSettings = { currentShape: 'freehand' };
 
@@ -57,15 +74,14 @@ export default function AppClient() {
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
   const [pathHistory, setPathHistory] = useState<Path[][]>([]);
   const [images, setImages] = useState<CanvasImage[]>([]);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
 
   const [symmetry, setSymmetry] = useState<SymmetrySettings>(initialSymmetrySettings);
   const [animation, setAnimation] = useState<AnimationSettings>(initialAnimationSettings);
   const [tools, setTools] = useState<DrawingTools>(() => {
-    // Initialize with theme-dependent colors
     const isSystemDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    // Assume default theme is light if not system or if window is undefined initially
-    const defaultIsDark = false; 
-    const isDarkMode = isSystemDark || defaultIsDark; 
+    const defaultIsDark = false;
+    const isDarkMode = isSystemDark || defaultIsDark;
     return {
       ...initialDrawingToolsBase,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
@@ -75,6 +91,9 @@ export default function AppClient() {
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>(initialShapeSettings);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(true);
+  const [activeSection, setActiveSection] = useState<ActiveSectionType>('shapes');
+  
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -84,11 +103,13 @@ export default function AppClient() {
   const recordedChunksRef = useRef<Blob[]>([]);
   const [isRecording, setIsRecording] = useState(false);
 
+  const isMobile = useIsMobile();
+
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentTheme === 'dark';
     setTools(prev => ({
-      ...prev, // Keep other settings like lineWidth
+      ...prev,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     }));
@@ -118,6 +139,7 @@ export default function AppClient() {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths((prevPaths) => [...prevPaths, newPath]);
      setCurrentPath([]);
+     setSelectedImageId(null); // Deselect image when drawing
   }, [paths]);
 
   const handleImageUpload = useCallback((file: File) => {
@@ -161,7 +183,8 @@ export default function AppClient() {
             originalHeight: img.naturalHeight,
           };
           setImages(prev => [...prev, newImage]);
-          toast({ title: "Image Added", description: "The image has been added to the canvas." });
+          setSelectedImageId(newImage.id); // Auto-select new image
+          toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
         };
         img.onerror = () => {
           toast({ variant: "destructive", title: "Error", description: "Could not load image file." });
@@ -175,27 +198,49 @@ export default function AppClient() {
     reader.readAsDataURL(file);
   }, [mainCanvasDimensions, toast]);
 
+  const handleImageUpdate = useCallback((updatedImage: CanvasImage) => {
+    setImages(prevImages => prevImages.map(img => img.id === updatedImage.id ? updatedImage : img));
+  }, []);
+
+  const handleImageSelect = useCallback((id: string | null) => {
+    setSelectedImageId(id);
+  }, []);
+
+
   const handleClearCanvas = useCallback(() => {
-     setPathHistory((prevHistory) => [...prevHistory, paths]); // Save current state for potential undo
+     setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths([]);
      setCurrentPath([]);
      setImages([]);
+     setSelectedImageId(null);
      toast({ title: "Canvas Cleared", description: "Drawing and images have been cleared." });
   }, [paths, toast]);
 
   const handleUndo = useCallback(() => {
+    if (images.length > 0 && selectedImageId) { // Simplistic undo for last image placement if an image is selected
+        const lastImage = images[images.length -1];
+        if(lastImage.id === selectedImageId){
+             setImages(prev => prev.slice(0, -1));
+             setSelectedImageId(null);
+             toast({ title: "Image Removed", description: "Last added image was removed."});
+             return;
+        }
+    }
     if (pathHistory.length === 0) return;
     const previousPaths = pathHistory[pathHistory.length - 1];
     setPaths(previousPaths);
     setPathHistory((prevHistory) => prevHistory.slice(0, -1));
     setCurrentPath([]);
-    // Note: Image undo is not fully implemented with path history (would need separate image history)
-    // For simplicity, undo only affects paths for now.
-  }, [pathHistory]);
+    setSelectedImageId(null);
+  }, [pathHistory, images, selectedImageId, toast]);
 
-  const canUndo = pathHistory.length > 0;
+  const canUndo = pathHistory.length > 0 || (images.length > 0 && selectedImageId !== null && images[images.length-1]?.id === selectedImageId) ;
+
 
   const handleSaveDrawing = useCallback(async () => {
+    setSelectedImageId(null); // Deselect image before saving
+    await new Promise(resolve => setTimeout(resolve, 50)); // Give canvas time to re-render without selection box
+
     if (canvasRef.current) {
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
@@ -272,7 +317,35 @@ export default function AppClient() {
         return new Promise<void>((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
-            tempCtx.drawImage(img, imgData.x, imgData.y, imgData.width, imgData.height);
+            // Apply symmetry for images during save
+            const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
+            const canvasCenterX = tempCanvas.width / 2;
+            const canvasCenterY = tempCanvas.height / 2;
+
+            for (let i = 0; i < numAxes; i++) {
+                const rotationAngle = (i * 2 * Math.PI) / numAxes;
+                const applyTransformAndDraw = (currentX: number, currentY: number, currentWidth: number, currentHeight: number, scaleX: number = 1, scaleY: number = 1) => {
+                    tempCtx.save();
+                    tempCtx.translate(canvasCenterX, canvasCenterY);
+                    tempCtx.rotate(rotationAngle);
+                    tempCtx.translate(-canvasCenterX, -canvasCenterY);
+
+                    tempCtx.translate(currentX + currentWidth / 2, currentY + currentHeight / 2);
+                    tempCtx.scale(scaleX, scaleY);
+                    tempCtx.drawImage(img, -currentWidth / 2, -currentHeight / 2, currentWidth, currentHeight);
+                    tempCtx.restore();
+                };
+                applyTransformAndDraw(imgData.x, imgData.y, imgData.width, imgData.height);
+                if (symmetry.mirrorX) {
+                    applyTransformAndDraw(tempCanvas.width - imgData.x - imgData.width, imgData.y, imgData.width, imgData.height, -1, 1);
+                }
+                if (symmetry.mirrorY) {
+                    applyTransformAndDraw(imgData.x, tempCanvas.height - imgData.y - imgData.height, imgData.width, imgData.height, 1, -1);
+                }
+                if (symmetry.mirrorX && symmetry.mirrorY) {
+                    applyTransformAndDraw(tempCanvas.width - imgData.x - imgData.width, tempCanvas.height - imgData.y - imgData.height, imgData.width, imgData.height, -1, -1);
+                }
+            }
             resolve();
           };
           img.onerror = (err) => {
@@ -310,18 +383,20 @@ export default function AppClient() {
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     });
     setShapeSettings(initialShapeSettings);
-    handleClearCanvas(); // Also clear canvas content on full reset
-    setPathHistory([]); // Clear undo history too
+    handleClearCanvas(); 
+    setPathHistory([]); 
+    setSelectedImageId(null);
     toast({ title: "Settings Reset", description: "All settings and canvas cleared." });
-  }, [theme, systemTheme, handleClearCanvas]);
+  }, [theme, systemTheme, handleClearCanvas, toast]);
 
   const handleStartRecording = useCallback(() => {
+    setSelectedImageId(null); // Deselect image before recording
     if (!canvasRef.current) {
       toast({ variant: "destructive", title: "Recording Error", description: "Canvas not available." });
       return;
     }
     try {
-      const stream = canvasRef.current.captureStream(30); // 30 FPS
+      const stream = canvasRef.current.captureStream(30); 
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
       recordedChunksRef.current = [];
 
@@ -358,59 +433,116 @@ export default function AppClient() {
   const handleStopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      // onstop will handle the rest
       toast({ title: "Recording Stopped", description: "Processing video..." });
     }
   }, [isRecording, toast]);
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
+  const toggleSidebarPin = () => setIsSidebarPinned(!isSidebarPinned);
+
+  const handleSectionSelect = (section: ActiveSectionType) => {
+    setActiveSection(section);
+    if (isMobile) {
+      setIsMobileSidebarOpen(true);
+    } else if (!isSidebarPinned) {
+      setIsSidebarPinned(true); // Auto-expand sidebar if it was collapsed (icon mode)
+    }
+  };
+  
+  const headerSections: { name: ActiveSectionType; label: string; icon: React.ElementType }[] = [
+    { name: 'preview', label: 'Preview', icon: PreviewIcon },
+    { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
+    { name: 'shapes', label: 'Shapes', icon: ShapesIcon },
+    { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
+    { name: 'image', label: 'Image Controls', icon: ImageIcon },
+    { name: 'symmetry', label: 'Symmetry', icon: SymmetryIcon },
+    { name: 'animation', label: 'Animation', icon: AnimationIcon },
+  ];
+
+  const renderActiveSectionContent = () => {
+    const commonProps = { mainCanvasDimensions };
+    switch (activeSection) {
+      case 'preview':
+        return <PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
+      case 'actions':
+        return <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
+      case 'shapes':
+        return <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
+      case 'tools':
+        return <DrawingToolControl tools={tools} onToolsChange={setTools} />;
+      case 'image':
+        return <ImageUploadControl onImageUpload={handleImageUpload} {...commonProps} />;
+      case 'symmetry':
+        return <SymmetryControl symmetry={symmetry} onSymmetryChange={setSymmetry} />;
+      case 'animation':
+        return <AnimationControl animation={animation} onAnimationChange={setAnimation} />;
+      default:
+        return <div className="p-4 text-muted-foreground">Select a section from the header.</div>;
+    }
+  };
+
+  const sidebarOpenState = isMobile ? isMobileSidebarOpen : isSidebarPinned;
+  const sidebarOnOpenChange = isMobile ? setIsMobileSidebarOpen : setIsSidebarPinned;
 
   return (
     <SidebarProvider defaultOpen={true}>
+       <TooltipProvider>
       <div className="flex h-screen w-full flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
-          <div className="flex items-center gap-2">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background px-4 gap-2">
+          <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleMobileSidebar}>
               <Menu className="h-6 w-6" />
               <span className="sr-only">Toggle Menu</span>
             </Button>
-            <HegArtLogo className="h-8 w-auto" />
-            <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider hidden sm:block">#HegArt</h1>
+            <HegArtLogo className="h-8 w-auto hidden sm:block" />
+             <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider hidden lg:block ml-2">#HegArt</h1>
           </div>
-          <ThemeToggle />
+
+          <div className="flex items-center gap-1 sm:gap-2">
+            {headerSections.map(section => (
+              <Tooltip key={section.name}>
+                <TooltipTrigger asChild>
+                  <Button variant={activeSection === section.name ? "secondary" : "ghost"} size="icon" onClick={() => handleSectionSelect(section.name)}>
+                    <section.icon className="h-5 w-5" />
+                    <span className="sr-only">{section.label}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>{section.label}</p></TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+          
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={toggleSidebarPin} className="hidden md:inline-flex">
+                  {isSidebarPinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
+                  <span className="sr-only">{isSidebarPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>{isSidebarPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}</p></TooltipContent>
+            </Tooltip>
+            <ThemeToggle />
+          </div>
         </header>
         <div className="flex flex-1 overflow-hidden">
           <Sidebar
-            className="border-r md:w-80 lg:w-96 z-10" // Ensure sidebar is above maximized preview if it overflows
-            collapsible="icon"
-            open={isMobileSidebarOpen}
-            onOpenChange={setIsMobileSidebarOpen}
+            className="border-r md:w-80 lg:w-96 z-10"
+            collapsible={isMobile ? "none" : "icon"} // Icon collapse only on desktop
+            open={sidebarOpenState}
+            onOpenChange={sidebarOnOpenChange}
+            side="left"
           >
-            <ControlPanel
-              symmetry={symmetry}
-              onSymmetryChange={setSymmetry}
-              animation={animation}
-              onAnimationChange={setAnimation}
-              tools={tools}
-              onToolsChange={setTools}
-              shapes={shapeSettings}
-              onShapesChange={setShapeSettings}
-              activePath={currentPath}
-              completedPaths={paths}
-              onClear={handleClearCanvas}
-              onSave={handleSaveDrawing}
-              onUndo={handleUndo}
-              canUndo={canUndo}
-              onResetSettings={handleResetSettings}
-              mainCanvasDimensions={mainCanvasDimensions}
-              onImageUpload={handleImageUpload}
-              isRecording={isRecording}
-              onStartRecording={handleStartRecording}
-              onStopRecording={handleStopRecording}
-            />
+            <ScrollArea className="h-full">
+              <SidebarContent className="p-0"> {/* Remove padding if children handle it */}
+                 <div className="p-4 space-y-4"> {/* Add padding inside ScrollArea's child */}
+                  {renderActiveSectionContent()}
+                 </div>
+              </SidebarContent>
+            </ScrollArea>
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
-             <div className="relative w-full h-full overflow-hidden"> {/* This overflow-hidden might conflict with maximized preview, ensure preview is truly fixed/portaled if it breaks out */}
+             <div className="relative w-full h-full overflow-hidden">
                 <DrawingCanvas
                   ref={canvasRef}
                   paths={paths}
@@ -423,11 +555,16 @@ export default function AppClient() {
                   drawingTools={tools}
                   shapeSettings={shapeSettings}
                   backgroundColor={tools.backgroundColor}
+                  selectedImageId={selectedImageId}
+                  onImageSelect={handleImageSelect}
+                  onImageUpdate={handleImageUpdate}
                 />
              </div>
           </SidebarInset>
         </div>
       </div>
+      </TooltipProvider>
     </SidebarProvider>
   );
 }
+

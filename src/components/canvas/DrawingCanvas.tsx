@@ -8,7 +8,7 @@ import { drawShape } from './shapeUtils';
 
 interface DrawingCanvasProps {
   paths: Path[];
-  images: CanvasImage[]; // New prop for images
+  images: CanvasImage[];
   currentPath: Point[];
   onCurrentPathChange: (path: Point[]) => void;
   onPathAdd: (path: Path) => void;
@@ -17,12 +17,15 @@ interface DrawingCanvasProps {
   drawingTools: DrawingTools;
   shapeSettings: ShapeSettings;
   backgroundColor: string;
+  selectedImageId: string | null;
+  onImageSelect: (id: string | null) => void;
+  onImageUpdate: (updatedImage: CanvasImage) => void;
 }
 
 export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
   ({
     paths,
-    images, // Destructure new prop
+    images,
     currentPath,
     onCurrentPathChange,
     onPathAdd,
@@ -30,12 +33,19 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     animationSettings,
     drawingTools,
     shapeSettings,
-    backgroundColor
+    backgroundColor,
+    selectedImageId,
+    onImageSelect,
+    onImageUpdate,
   }, ref) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
     useImperativeHandle(ref, () => internalCanvasRef.current!);
 
     const [isDrawing, setIsDrawing] = useState(false);
+    const [isDraggingImage, setIsDraggingImage] = useState(false);
+    const dragStartPointRef = useRef<{ x: number, y: number } | null>(null);
+    const imageStartPosRef = useRef<{ x: number, y: number } | null>(null);
+    
     const animationFrameId = useRef<number | null>(null);
     const lastAnimationTime = useRef<number>(0);
     const totalRotation = useRef<number>(0);
@@ -76,7 +86,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                 .catch(error => console.error("Error loading one or more images:", error));
         }
 
-        // Cleanup old images not in current 'images' prop
         const currentImageIds = new Set(images.map(im => im.id));
         setLoadedHtmlImages(prev => {
             const next = { ...prev };
@@ -87,7 +96,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                     changed = true;
                 }
             });
-            // Only update state if there was an actual change to avoid potential loops if prev was already correct
             if (changed) return next;
             return prev; 
         });
@@ -114,18 +122,57 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const startDrawing = (event: React.MouseEvent | React.TouchEvent) => {
-       if ('touches' in event) event.preventDefault();
+      if ('touches' in event) event.preventDefault();
       const point = getCanvasCoordinates(event);
       if (!point) return;
+
+      // Check if clicking on an image
+      for (let i = images.length - 1; i >= 0; i--) {
+        const imgData = images[i];
+        if (
+          point.x >= imgData.x &&
+          point.x <= imgData.x + imgData.width &&
+          point.y >= imgData.y &&
+          point.y <= imgData.y + imgData.height
+        ) {
+          onImageSelect(imgData.id);
+          setIsDraggingImage(true);
+          dragStartPointRef.current = point;
+          imageStartPosRef.current = { x: imgData.x, y: imgData.y };
+          setIsDrawing(false); // Don't start drawing paths
+          return;
+        }
+      }
+      
+      // If not clicking on an image, deselect any selected image
+      if (selectedImageId) {
+        onImageSelect(null);
+      }
+
       setIsDrawing(true);
       onCurrentPathChange([point]);
     };
 
     const draw = (event: React.MouseEvent | React.TouchEvent) => {
-       if ('touches' in event) event.preventDefault();
-      if (!isDrawing) return;
+      if ('touches' in event) event.preventDefault();
       const point = getCanvasCoordinates(event);
       if (!point) return;
+
+      if (isDraggingImage && selectedImageId && dragStartPointRef.current && imageStartPosRef.current) {
+        const draggedImage = images.find(img => img.id === selectedImageId);
+        if (draggedImage) {
+          const dx = point.x - dragStartPointRef.current.x;
+          const dy = point.y - dragStartPointRef.current.y;
+          onImageUpdate({
+            ...draggedImage,
+            x: imageStartPosRef.current.x + dx,
+            y: imageStartPosRef.current.y + dy,
+          });
+        }
+        return;
+      }
+
+      if (!isDrawing) return;
       if (shapeSettings.currentShape === 'freehand') {
           onCurrentPathChange([...currentPath, point]);
       } else {
@@ -136,6 +183,14 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const finishDrawing = () => {
+      if (isDraggingImage) {
+        setIsDraggingImage(false);
+        dragStartPointRef.current = null;
+        imageStartPosRef.current = null;
+        // Image remains selected
+        return;
+      }
+
       if (!isDrawing || currentPath.length === 0) return;
       setIsDrawing(false);
       let finalPathPoints: Point[];
@@ -187,7 +242,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         canvas: HTMLCanvasElement,
         htmlImg: HTMLImageElement,
         imgData: CanvasImage,
-        symmetry: SymmetrySettings
+        symmetry: SymmetrySettings,
+        isSelected: boolean
      ) => {
         const { x, y, width, height } = imgData;
         const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
@@ -206,10 +262,18 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                 ctx.translate(currentX + width / 2, currentY + height / 2);
                 ctx.scale(scaleX, scaleY);
                 ctx.drawImage(htmlImg, -width / 2, -height / 2, width, height);
+                
+                if (isSelected && i === 0 && scaleX === 1 && scaleY === 1) { // Draw selection only on the primary, non-mirrored image
+                    ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
+                    ctx.lineWidth = 2 / (animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1); // Adjust for global scale
+                    ctx.setLineDash([4, 2]);
+                    ctx.strokeRect(-width / 2 - 2, -height / 2 - 2, width + 4, height + 4);
+                    ctx.setLineDash([]);
+                }
                 ctx.restore();
             };
 
-            applyTransformAndDraw(x, y); // Base image
+            applyTransformAndDraw(x, y); 
 
             if (symmetry.mirrorX) {
                 applyTransformAndDraw(canvas.width - x - width, y, -1, 1);
@@ -222,7 +286,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             }
         }
      };
-
 
     const renderCanvas = (time: number = 0) => {
       if (!internalCanvasRef.current) return;
@@ -272,21 +335,19 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
        }
        const currentRotationAngle = totalRotation.current;
 
-      ctx.save(); // Global transform save
+      ctx.save(); 
       ctx.translate(centerX, centerY);
       if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
       if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
       ctx.translate(-centerX, -centerY);
 
-      // Draw Images first (typically background elements)
       images.forEach(imgData => {
         const htmlImg = loadedHtmlImages[imgData.id];
         if (htmlImg && htmlImg.complete && htmlImg.naturalWidth > 0) {
-          drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings);
+          drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings, imgData.id === selectedImageId);
         }
       });
 
-      // Draw Paths
       const drawSymmetricPath = (originalPathData: Path | { points: Point[], color: string, lineWidth: number }, isTemporaryShape = false) => {
         const { points: originalPoints, color, lineWidth } = originalPathData;
         const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
@@ -333,7 +394,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
           }, isShapePreview);
       }
       
-      ctx.restore(); // Global transform restore
+      ctx.restore(); 
 
       if (animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || images.some(img => !loadedHtmlImages[img.id]?.complete)) {
         animationFrameId.current = requestAnimationFrame(renderCanvas);
@@ -357,7 +418,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         if (parent.clientWidth > 0 && parent.clientHeight > 0) {
             canvas.width = parent.clientWidth;
             canvas.height = parent.clientHeight;
-            renderCanvas(); // Re-render on resize
+            renderCanvas(); 
         }
       });
       resizeObserver.observe(parent);
@@ -368,14 +429,14 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       renderCanvas();
 
       return () => {
-        resizeObserver.disconnect(); // Use disconnect() for ResizeObserver
+        resizeObserver.disconnect(); 
         if (animationFrameId.current) {
           cancelAnimationFrame(animationFrameId.current);
           animationFrameId.current = null;
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]);
+    }, [backgroundColor]); // Only re-run if background color changes for initial setup
 
      useEffect(() => {
        renderCanvas(); 
@@ -398,8 +459,11 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          totalRotation.current = 0;
          spinDirection.current = 1;
          lastSpinDirectionChangeTime.current = 0;
-         renderCanvas();
+         renderCanvas(); // Render one last time to clear animation artifacts
        }
+       // Ensure canvas re-renders when selectedImageId changes to show/hide selection highlight
+       if (!animationFrameId.current) renderCanvas();
+
 
        return () => {
          if (animationFrameId.current) {
@@ -408,7 +472,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings]);
+     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId]);
 
 
     return (
@@ -417,7 +481,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={finishDrawing}
-        onMouseLeave={finishDrawing}
+        onMouseLeave={finishDrawing} // Important for when mouse leaves canvas while dragging image or drawing
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={finishDrawing}
@@ -429,3 +493,4 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 );
 
 DrawingCanvas.displayName = "DrawingCanvas";
+
