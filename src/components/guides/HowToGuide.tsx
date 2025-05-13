@@ -5,7 +5,7 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Zap, Maximize, RotateCw, Contrast, Settings, Palette, Shapes, Image, Type, SlidersHorizontal, MousePointer2, Pin, PinOff, ListCollapse, HelpCircle, Wand2, Presentation } from "lucide-react";
+import { Zap, Maximize, RotateCw, Contrast, Settings, Palette, Shapes, Image as ImageIconLucide, Type, SlidersHorizontal, MousePointer2, Pin, PinOff, ListCollapse, HelpCircle, Wand2, Presentation, Info } from "lucide-react";
 
 export function HowToGuide() {
   return (
@@ -83,9 +83,9 @@ export function HowToGuide() {
               </CardContent>
             </Card>
              <Card>
-              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><Image className="h-5 w-5"/>Image Integration</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ImageIconLucide className="h-5 w-5"/>Image Integration</CardTitle></CardHeader>
               <CardContent>
-                <p className="mb-2">Access via the "Image Controls" section (header icon <Image className="inline h-4 w-4"/>).</p>
+                <p className="mb-2">Access via the "Image Controls" section (header icon <ImageIconLucide className="inline h-4 w-4"/>).</p>
                 <ul className="list-disc list-inside space-y-2 pl-4">
                     <li><strong>Upload Image:</strong> Click "Select Image File" to choose an image from your device. It will be added to the center of the canvas.</li>
                     <li><strong>Moving Images:</strong> Once an image is added, it's automatically selected. Click and drag it to reposition. Clicking on an unselected image will select it.</li>
@@ -171,7 +171,7 @@ export function HowToGuide() {
               <li><strong>Reset Settings:</strong> A confirmation dialog will appear. If confirmed, this action will:
                 <ul className="list-square list-inside pl-4 mt-1">
                     <li>Reset all symmetry, animation, drawing tools, and shape/text settings to their defaults.</li>
-                    <li>Clear the entire canvas (paths, images, text).</li>
+                    <li>Clear the entire canvas (drawings and images).</li>
                     <li>Clear the undo history.</li>
                 </ul>
               This is useful for starting completely fresh.
@@ -226,7 +226,7 @@ export function HowToGuide() {
                         <li><SlidersHorizontal className="inline h-4 w-4 mr-1"/> Shows/Hides the "Actions" section.</li>
                         <li><Shapes className="inline h-4 w-4 mr-1"/> Shows/Hides the "Shapes & Text" section.</li>
                         <li><Palette className="inline h-4 w-4 mr-1"/> Shows/Hides the "Drawing Tools" section.</li>
-                        <li><Image className="inline h-4 w-4 mr-1"/> Shows/Hides the "Image Controls" section.</li>
+                        <li><ImageIconLucide className="inline h-4 w-4 mr-1"/> Shows/Hides the "Image Controls" section.</li>
                         <li><Wand2 className="inline h-4 w-4 mr-1"/> Shows/Hides the "Symmetry" section.</li>
                         <li><Zap className="inline h-4 w-4 mr-1"/> Shows/Hides the "Animation" section.</li>
                     </ul>
@@ -248,4 +248,3 @@ export function HowToGuide() {
     </div>
   );
 }
-
