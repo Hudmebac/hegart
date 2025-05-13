@@ -92,7 +92,11 @@ export default function AppClient() {
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
-  const [activeSection, setActiveSection] = useState<ActiveSectionType>('shapes');
+  
+  // State for which buttons are visually active/selected in the header
+  const [activeHeaderButtons, setActiveHeaderButtons] = useState<Set<ActiveSectionType>>(() => new Set<ActiveSectionType>(['shapes']));
+  // State for which section's content is currently displayed in the sidebar
+  const [displayedSidebarSection, setDisplayedSidebarSection] = useState<ActiveSectionType>('shapes');
   
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
@@ -440,12 +444,23 @@ export default function AppClient() {
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
   const toggleSidebarPin = () => setIsSidebarPinned(!isSidebarPinned);
 
-  const handleSectionSelect = (section: ActiveSectionType) => {
-    setActiveSection(section);
+  const handleSectionSelect = (sectionName: ActiveSectionType) => {
+    setActiveHeaderButtons(prevActiveButtons => {
+        const newActiveButtons = new Set(prevActiveButtons);
+        if (newActiveButtons.has(sectionName)) {
+            newActiveButtons.delete(sectionName);
+        } else {
+            newActiveButtons.add(sectionName);
+        }
+        return newActiveButtons;
+    });
+
+    setDisplayedSidebarSection(sectionName);
+
     if (isMobile) {
-      setIsMobileSidebarOpen(true);
+        setIsMobileSidebarOpen(true);
     } else if (!isSidebarPinned) {
-      setIsSidebarPinned(true); // Auto-expand sidebar if it was collapsed (icon mode)
+        setIsSidebarPinned(true); 
     }
   };
   
@@ -461,7 +476,7 @@ export default function AppClient() {
 
   const renderActiveSectionContent = () => {
     const commonProps = { mainCanvasDimensions };
-    switch (activeSection) {
+    switch (displayedSidebarSection) {
       case 'preview':
         return <PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
       case 'actions':
@@ -502,7 +517,11 @@ export default function AppClient() {
             {headerSections.map(section => (
               <Tooltip key={section.name}>
                 <TooltipTrigger asChild>
-                  <Button variant={activeSection === section.name ? "secondary" : "ghost"} size="icon" onClick={() => handleSectionSelect(section.name)}>
+                  <Button 
+                    variant={activeHeaderButtons.has(section.name) ? "secondary" : "ghost"} 
+                    size="icon" 
+                    onClick={() => handleSectionSelect(section.name)}
+                  >
                     <section.icon className="h-5 w-5" />
                     <span className="sr-only">{section.label}</span>
                   </Button>
