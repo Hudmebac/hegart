@@ -100,6 +100,7 @@ export default function AppClient() {
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   
   const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>(['shapes']));
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
@@ -447,7 +448,15 @@ export default function AppClient() {
   }, [isRecording, toast]);
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
-  const toggleSidebarPin = () => setIsSidebarPinned(!isSidebarPinned);
+  
+  const toggleSidebarPin = () => {
+    const newPinnedState = !isSidebarPinned;
+    setIsSidebarPinned(newPinnedState);
+    if (newPinnedState) { // If now pinned
+      setIsSidebarHovered(false); // Reset hover state
+    }
+  };
+
 
   const togglePreview = () => setIsPreviewVisible(prev => !prev);
 
@@ -482,7 +491,14 @@ export default function AppClient() {
     if (isMobile) {
         setIsMobileSidebarOpen(true);
     } else if (!isSidebarPinned) {
-        setIsSidebarPinned(true); 
+        // If sidebar is unpinned, hovering will open it. If user clicks a section, we can make it "stick" open by pinning.
+        // Or, just let the hover mechanism handle it. For now, let's assume clicking a section when unpinned
+        // should ideally pin the sidebar for easier interaction, or rely on hover.
+        // If we want it to pin on section selection:
+        // setIsSidebarPinned(true);
+        // setIsSidebarHovered(false); // Ensure hover doesn't conflict
+        // For now, let hover handle it or user can pin manually.
+        setIsSidebarHovered(true); // Open it temporarily if unpinned
     }
   };
   
@@ -587,8 +603,27 @@ export default function AppClient() {
     return <>{componentsToRender}</>;
   };
 
-  const sidebarOpenState = isMobile ? isMobileSidebarOpen : isSidebarPinned;
-  const sidebarOnOpenChange = isMobile ? setIsMobileSidebarOpen : setIsSidebarPinned;
+  const sidebarOpenState = isMobile 
+    ? isMobileSidebarOpen 
+    : (isSidebarPinned || isSidebarHovered);
+
+  const sidebarOnOpenChange = isMobile 
+    ? setIsMobileSidebarOpen 
+    : (open: boolean) => {
+        // For desktop, this 'onOpenChange' is primarily for when the sidebar might internally
+        // manage its open state, or if the Sheet component (used for mobile) calls it.
+        // If unpinned, and sidebar itself tries to open (e.g. by a click on its own trigger if it had one),
+        // we might want to pin it. Otherwise, hover handles temporary open.
+        if (!isMobile) {
+          if (open && !isSidebarPinned) { // If it's asked to open and it's not pinned
+            setIsSidebarPinned(true); // Pin it
+            setIsSidebarHovered(false); // Ensure hover state is reset
+          } else if (!open && isSidebarPinned) { // If it's asked to close and it's pinned
+            setIsSidebarPinned(false); // Unpin it
+          }
+        }
+      };
+
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -671,6 +706,16 @@ export default function AppClient() {
             open={sidebarOpenState}
             onOpenChange={sidebarOnOpenChange}
             side="left"
+            onMouseEnter={() => {
+              if (!isMobile && !isSidebarPinned) {
+                setIsSidebarHovered(true);
+              }
+            }}
+            onMouseLeave={() => {
+              if (!isMobile && !isSidebarPinned) {
+                setIsSidebarHovered(false);
+              }
+            }}
           >
             <ScrollArea className="h-full">
               <SidebarContent className="p-0"> 
