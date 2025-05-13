@@ -1,3 +1,4 @@
+
 import type { SVGProps } from 'react';
 
 export function HegArtLogo(props: SVGProps<SVGSVGElement>) {
@@ -18,8 +19,7 @@ export function HegArtLogo(props: SVGProps<SVGSVGElement>) {
         fontSize="10"
         fontWeight="bold"
         fill="hsl(var(--primary-foreground))"
-        textTransform="uppercase"
-        letterSpacing="0.05em"
+        className="uppercase tracking-wider" // Apply textTransform and letterSpacing via CSS classes
       >
         <tspan x="50%" dy="-0.6em">#Heg</tspan>
         <tspan x="50%" dy="1.2em">Art</tspan>
