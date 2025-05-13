@@ -18,6 +18,13 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 
 interface ShapeControlProps {
   shapeSettings: AppShapeSettings;
@@ -50,13 +57,23 @@ export function ShapeControl({
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Shape &amp; Text Controls</h2>
-      <div className="space-y-2">
-        <Label htmlFor="shape-select" className="text-sm">Drawing Mode</Label>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          <Label htmlFor="shape-select" className="text-sm">Drawing Mode</Label>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="start">
+               <p>Choose a mode. For shapes and text, click on the canvas to place/define.</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
         <Select
           value={shapeSettings.currentShape}
           onValueChange={handleShapeChange}
         >
-          <SelectTrigger id="shape-select" className="w-full">
+          <SelectTrigger id="shape-select" className="w-full mt-1">
             <SelectValue placeholder="Select a drawing mode" />
           </SelectTrigger>
           <SelectContent>
@@ -87,9 +104,6 @@ export function ShapeControl({
             </SelectGroup>
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
-          Choose a mode. For shapes and text, click on the canvas to place/define.
-        </p>
       </div>
 
       {shapeSettings.currentShape === 'text' && (
@@ -187,7 +201,7 @@ export function ShapeControl({
 
       <Separator />
 
-      <div className="space-y-3">
+      <div className="space-y-1">
         <div className="flex items-center space-x-2">
           <Checkbox
             id="isFixedShape"
@@ -198,13 +212,18 @@ export function ShapeControl({
           <Label htmlFor="isFixedShape" className="text-sm font-normal cursor-pointer">
             Fixed Element (No Symmetry)
           </Label>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="start" className="max-w-xs">
+              <p>If checked, this element will not be affected by mirror or rotational symmetry settings. (Not applicable to freehand drawing).</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
-        <p className="text-xs text-muted-foreground pl-6">
-          If checked, this element will not be affected by mirror or rotational symmetry settings. (Not applicable to freehand)
-        </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-1">
         <div className="flex items-center space-x-2">
           <Checkbox
             id="excludeFromAnimation"
@@ -215,12 +234,16 @@ export function ShapeControl({
           <Label htmlFor="excludeFromAnimation" className="text-sm font-normal cursor-pointer">
             Exclude from Animation
           </Label>
+           <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="top" align="start" className="max-w-xs">
+              <p>If checked, this element will not be affected by any animation settings (pulse, scale, spin). (Not applicable to freehand drawing).</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
-        <p className="text-xs text-muted-foreground pl-6">
-          If checked, this element will not be affected by any animation settings (pulse, scale, spin). (Not applicable to freehand)
-        </p>
       </div>
     </div>
   );
 }
-
