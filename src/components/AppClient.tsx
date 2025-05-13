@@ -1,7 +1,9 @@
+
 "use client";
 
 import type { Point, Path, CanvasImage, ShapeType, CanvasText } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
 import { SymmetryControl } from '@/components/controls/SymmetrySettings';
 import { AnimationControl } from '@/components/controls/AnimationSettings';
@@ -16,6 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
@@ -139,8 +142,9 @@ export default function AppClient() {
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   
-  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>(['shapes']));
+  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>(['all']));
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+  const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
   
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
@@ -186,6 +190,11 @@ export default function AppClient() {
       observer.observe(parentElement);
       return () => observer.disconnect();
     }
+  }, []);
+
+  useEffect(() => {
+    // Show welcome dialog on initial mount
+    setShowWelcomeDialog(true);
   }, []);
 
 
@@ -409,7 +418,7 @@ export default function AppClient() {
 
       const imageLoadPromises = images.map(imgData => {
         return new Promise<void>((resolve, reject) => {
-          const img = new Image();
+          const img = new window.Image();
           img.onload = () => {
             const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
             const canvasCenterX = tempCanvas.width / 2;
@@ -691,7 +700,7 @@ export default function AppClient() {
 
     if (activeSections.has('all')) {
         return (
-            <Accordion type="multiple" className="w-full space-y-1" defaultValue={['shapes']}>
+            <Accordion type="multiple" className="w-full space-y-1" defaultValue={[]}>
                 {controlPanelSections.map(sectionConfig => {
                     let sectionContent: JSX.Element | null = null;
                     switch (sectionConfig.name) {
@@ -791,6 +800,33 @@ export default function AppClient() {
   return (
     <SidebarProvider defaultOpen={true}>
        <TooltipProvider>
+        <Dialog open={showWelcomeDialog} onOpenChange={setShowWelcomeDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <HegArtLogo className="h-8 w-8" />
+                Welcome to #HegArt!
+              </DialogTitle>
+              <DialogDescription>
+                Unleash your creativity with symmetric and animated art. Explore the controls in the sidebar and start drawing! All control sections are available, initially collapsed for a clean start.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-center items-center my-4">
+                <Image 
+                    src="https://picsum.photos/300/200" 
+                    alt="Funky Random Graphic" 
+                    width={300} 
+                    height={200} 
+                    className="rounded-md shadow-lg"
+                    data-ai-hint="abstract colorful"
+                />
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setShowWelcomeDialog(false)}>Get Started!</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       <div className="flex h-screen w-full flex-col">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background px-4 gap-2">
           <div className="flex items-center gap-1">
@@ -939,3 +975,4 @@ export default function AppClient() {
     </SidebarProvider>
   );
 }
+
