@@ -213,7 +213,7 @@ export default function AppClient() {
       idx === pathIndex ? { ...p, fillColor } : p
     ));
     toast({ title: "Shape Filled", description: "The selected shape has been filled." });
-  }, [paths, toast, snapshotState]);
+  }, [toast, snapshotState]); // paths removed as it's updated via setPaths
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
@@ -274,10 +274,6 @@ export default function AppClient() {
   }, [mainCanvasDimensions, toast, snapshotState]);
 
   const handleImageUpdate = useCallback((updatedImage: CanvasImage) => {
-    // For dragging, we might not want to snapshot every tiny move.
-    // Snapshotting on drag end is better, but this requires more logic.
-    // For now, this simple update won't create undo states for each drag pixel.
-    // To make dragging undoable, snapshotState() would be called here.
     setImages(prevImages => prevImages.map(img => img.id === updatedImage.id ? updatedImage : img));
   }, []);
 
@@ -476,17 +472,13 @@ export default function AppClient() {
                 let tx = originX;
                 let ty = originY;
                 
-                // Save context for potential scaling if mirroring text content
                 tempCtx.save();
 
                 if (applyMirrorX) {
                     tx = tempCanvas.width - tx;
-                    // If text needs to flip, e.g. for right-to-left reading after mirror
-                    // tempCtx.translate(tempCanvas.width, 0); tempCtx.scale(-1, 1);
                 }
                 if (applyMirrorY) {
                     ty = tempCanvas.height - ty;
-                     // tempCtx.translate(0, tempCanvas.height); tempCtx.scale(1, -1);
                 }
                 
                 if (numAxes > 1) {
@@ -495,22 +487,12 @@ export default function AppClient() {
                     tempCtx.translate(-canvasCenterX, -canvasCenterY);
                 }
                 
-                // Apply mirror translation *after* rotation if text itself is not scaled/flipped
                 let finalDrawX = tx;
                 let finalDrawY = ty;
 
-                if (numAxes > 1) { // If rotation applied, tx/ty are already relative to canvas center
+                if (numAxes > 1) { 
                     const translatedForRotX = originX - canvasCenterX;
                     const translatedForRotY = originY - canvasCenterY;
-                    let effectiveX = translatedForRotX;
-                    let effectiveY = translatedForRotY;
-
-                    if(applyMirrorX) effectiveX = (tempCanvas.width - originX) - canvasCenterX;
-                    if(applyMirrorY) effectiveY = (tempCanvas.height - originY) - canvasCenterY;
-                    
-                    // This part is tricky if mirroring should flip text content. Keeping simple: transform origin.
-                    // For complex text mirroring, a dedicated function is needed.
-                    // This simplified version mirrors the *start point* of the text.
                     
                     let pointToRotateX = originX;
                     let pointToRotateY = originY;
@@ -522,13 +504,17 @@ export default function AppClient() {
                     const tY = pointToRotateY - canvasCenterY;
                     finalDrawX = tX * Math.cos(angle) - tY * Math.sin(angle) + canvasCenterX;
                     finalDrawY = tX * Math.sin(angle) + tY * Math.cos(angle) + canvasCenterY;
-                } else { // No rotation
+                } else { 
                     if(applyMirrorX) finalDrawX = tempCanvas.width - originX;
                     if(applyMirrorY) finalDrawY = tempCanvas.height - originY;
+                     if(applyMirrorX && applyMirrorY){
+                        finalDrawX = tempCanvas.width - originX;
+                        finalDrawY = tempCanvas.height - originY;
+                    }
                 }
                 
                 tempCtx.fillText(text, finalDrawX, finalDrawY);
-                tempCtx.restore(); // Restore for next symmetric instance or text object
+                tempCtx.restore(); 
             };
             
             transformAndDrawText(x, y, false, false);
@@ -688,7 +674,7 @@ export default function AppClient() {
   
   const controlPanelSections: { name: ControlSectionId; label: string; icon: React.ElementType }[] = [
     { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
-    { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon }, // Updated label
+    { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon }, 
     { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
     { name: 'image', label: 'Image Controls', icon: ImageIcon },
     { name: 'symmetry', label: 'Symmetry', icon: SymmetryIcon },
@@ -787,20 +773,20 @@ export default function AppClient() {
     return <div className="space-y-4">{componentsToRender}</div>;
   };
 
-  const sidebarOpenState = isMobile 
+  const sidebarDynamicOpenState = isMobile 
     ? isMobileSidebarOpen 
     : (isSidebarPinned || isSidebarHovered);
 
-  const sidebarOnOpenChange = isMobile 
+  const sidebarOnOpenChangeHandler = isMobile 
     ? setIsMobileSidebarOpen 
-    : (open: boolean) => {
+    : (newOpenState: boolean) => {
         if (!isMobile) {
-          if (open && !isSidebarPinned) { 
-            setIsSidebarPinned(true); 
-            setIsSidebarHovered(false); 
-          } else if (!open && isSidebarPinned) { 
-            setIsSidebarPinned(false); 
+          if (!newOpenState && isSidebarPinned) {
+            // If an internal action (e.g. hypothetical internal collapse button) tries to close it while pinned, unpin it.
+            setIsSidebarPinned(false);
           }
+          // Explicit pinning/unpinning is handled by the Pin button.
+          // Hover behavior handles temporary expansion when unpinned.
         }
       };
 
@@ -881,10 +867,10 @@ export default function AppClient() {
         </header>
         <div className="flex flex-1 overflow-hidden relative"> 
           <Sidebar
-            className="border-r md:w-80 lg:w-96 z-10"
+            className="border-r z-10"
             collapsible={isMobile ? "none" : "icon"} 
-            open={sidebarOpenState}
-            onOpenChange={sidebarOnOpenChange}
+            open={sidebarDynamicOpenState}
+            onOpenChange={sidebarOnOpenChangeHandler}
             side="left"
             onMouseEnter={() => {
               if (!isMobile && !isSidebarPinned) {
