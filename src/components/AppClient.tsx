@@ -229,59 +229,71 @@ export default function AppClient() {
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      if (dataUrl) {
-        const img = new Image();
+      const result = e.target?.result;
+      if (typeof result === 'string') {
+        const dataUrl = result;
+        const img = new window.Image();
         img.onload = () => {
-          const canvasWidth = mainCanvasDimensions.width || 800;
-          const canvasHeight = mainCanvasDimensions.height || 600;
-          
-          const maxDimPercentage = Math.min(canvasWidth, canvasHeight) * 0.3;
-          const maxDimAbsolute = 300;
-          const maxDim = Math.min(maxDimPercentage, maxDimAbsolute);
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            const canvasWidth = mainCanvasDimensions.width || 800;
+            const canvasHeight = mainCanvasDimensions.height || 600;
+            
+            let w = img.naturalWidth;
+            let h = img.naturalHeight;
 
-          let w = img.naturalWidth;
-          let h = img.naturalHeight;
+            const maxDimPercentage = Math.min(canvasWidth, canvasHeight) * 0.3;
+            const maxDimAbsolute = 300;
+            const maxDim = Math.min(maxDimPercentage, maxDimAbsolute);
 
-          if (w > maxDim || h > maxDim) {
-            if (w > h) {
-              h = (h / w) * maxDim;
-              w = maxDim;
-            } else {
-              w = (w / h) * maxDim;
-              h = maxDim;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = (h / w) * maxDim;
+                w = maxDim;
+              } else {
+                w = (w / h) * maxDim;
+                h = maxDim;
+              }
             }
-          }
-          
-          w = Math.min(w, canvasWidth * 0.9);
-          h = Math.min(h, canvasHeight * 0.9);
+            
+            w = Math.min(w, canvasWidth * 0.9);
+            h = Math.min(h, canvasHeight * 0.9);
 
-          const newImage: CanvasImage = {
-            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            src: dataUrl,
-            x: (canvasWidth - w) / 2,
-            y: (canvasHeight - h) / 2,
-            width: w,
-            height: h,
-            originalWidth: img.naturalWidth,
-            originalHeight: img.naturalHeight,
-          };
-          snapshotState();
-          setImages(prev => [...prev, newImage]);
-          setSelectedImageId(newImage.id); 
-          setIsFillModeActive(false); 
-          toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
+            const newImage: CanvasImage = {
+              id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              src: dataUrl,
+              x: (canvasWidth - w) / 2,
+              y: (canvasHeight - h) / 2,
+              width: w,
+              height: h,
+              originalWidth: img.naturalWidth,
+              originalHeight: img.naturalHeight,
+            };
+            snapshotState();
+            setImages(prev => [...prev, newImage]);
+            setSelectedImageId(newImage.id); 
+            setIsFillModeActive(false); 
+            toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
+          } else {
+            toast({ variant: "destructive", title: "Image Error", description: "Invalid image dimensions after loading." });
+          }
         };
         img.onerror = () => {
-          toast({ variant: "destructive", title: "Error", description: "Could not load image file." });
+          toast({ variant: "destructive", title: "Image Load Error", description: "Could not load the image content. The file might be corrupted or an unsupported format." });
         };
         img.src = dataUrl;
+      } else {
+        toast({ variant: "destructive", title: "File Read Error", description: "Failed to read the image file as a data URL." });
       }
     };
     reader.onerror = () => {
-       toast({ variant: "destructive", title: "Error", description: "Could not read image file." });
+       toast({ variant: "destructive", title: "File Read Error", description: "An error occurred while trying to read the image file." });
     };
-    reader.readAsDataURL(file);
+
+    if (file.type.startsWith('image/') || file.name.match(/\.(heic|heif)$/i)) {
+        reader.readAsDataURL(file);
+    } else {
+        toast({ variant: "destructive", title: "Unsupported File", description: "Please select a valid image file (e.g., PNG, JPG, GIF, HEIC)." });
+    }
   }, [mainCanvasDimensions, toast, snapshotState]);
 
   const handleImageUpdate = useCallback((updatedImage: CanvasImage) => {
@@ -820,6 +832,7 @@ export default function AppClient() {
                     width={300} 
                     height={200} 
                     className="rounded-md shadow-lg"
+                    data-ai-hint="abstract colorful"
                 />
             </div>
             <DialogFooter>
