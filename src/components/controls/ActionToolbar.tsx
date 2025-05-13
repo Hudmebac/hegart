@@ -53,11 +53,11 @@ export function ActionToolbar({ onClear, onSave, onUndo, canUndo }: ActionToolba
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="outline" onClick={onSave} className="w-full">
-                <Save className="mr-2 h-4 w-4" /> Save
+                <Save className="mr-2 h-4 w-4" /> Export PNG
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Save drawing as PNG</p>
+              <p>Save drawing as PNG image</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

@@ -33,7 +33,7 @@ export function AnimationControl({ animation, onAnimationChange }: AnimationCont
               onCheckedChange={(checked) => onAnimationChange({ ...animation, isPulsing: checked })}
             />
           </div>
-          <p className="text-xs text-muted-foreground">Animate line width with a pulsing effect.</p>
+          <p className="text-xs text-muted-foreground">Animate line width. Intensity can make lines (dis)appear.</p>
           {animation.isPulsing && (
             <div className="space-y-4 pt-3">
               <div className="space-y-2">
@@ -52,7 +52,7 @@ export function AnimationControl({ animation, onAnimationChange }: AnimationCont
                 <Slider
                   id="pulseIntensity"
                   min={1}
-                  max={20}
+                  max={50} // Increased max for more pronounced effect relative to line width
                   step={1}
                   value={[animation.pulseIntensity]}
                   onValueChange={(value) => onAnimationChange({ ...animation, pulseIntensity: value[0] })}
@@ -93,7 +93,7 @@ export function AnimationControl({ animation, onAnimationChange }: AnimationCont
                 <Slider
                   id="scaleIntensity"
                   min={0.01} // 1% change
-                  max={0.5} // 50% change
+                  max={0.9} // 90% change (max scale becomes 1.9x, min 0.1x)
                   step={0.01}
                   value={[animation.scaleIntensity]}
                   onValueChange={(value) => onAnimationChange({ ...animation, scaleIntensity: value[0] })}
@@ -128,7 +128,23 @@ export function AnimationControl({ animation, onAnimationChange }: AnimationCont
                   value={[animation.spinSpeed]}
                   onValueChange={(value) => onAnimationChange({ ...animation, spinSpeed: value[0] })}
                 />
-                 <p className="text-xs text-muted-foreground">Positive values spin clockwise, negative values spin counter-clockwise.</p>
+                 <p className="text-xs text-muted-foreground">Positive: CW, Negative: CCW.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="spinDirectionChangeFrequency" className="text-xs">
+                  Direction Change Freq. ({animation.spinDirectionChangeFrequency}s)
+                </Label>
+                <Slider
+                  id="spinDirectionChangeFrequency"
+                  min={0}
+                  max={20}
+                  step={1}
+                  value={[animation.spinDirectionChangeFrequency]}
+                  onValueChange={(value) => onAnimationChange({ ...animation, spinDirectionChangeFrequency: value[0] })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Avg. time (s) between random direction flips. 0 for fixed direction.
+                </p>
               </div>
             </div>
           )}
