@@ -1,33 +1,35 @@
 
 "use client";
 
-import type { Point, Path } from "@/types/drawing";
+import type { Point, Path, CanvasImage } from "@/types/drawing";
 import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
-import { drawShape } from './shapeUtils'; // Import shape drawing utility
+import { drawShape } from './shapeUtils';
 
 interface DrawingCanvasProps {
   paths: Path[];
-  currentPath: Point[]; // Receive current path as prop
-  onCurrentPathChange: (path: Point[]) => void; // Receive handler to update current path
+  images: CanvasImage[]; // New prop for images
+  currentPath: Point[];
+  onCurrentPathChange: (path: Point[]) => void;
   onPathAdd: (path: Path) => void;
   symmetrySettings: SymmetrySettings;
   animationSettings: AnimationSettings;
   drawingTools: DrawingTools;
-  shapeSettings: ShapeSettings; // Receive shape settings
+  shapeSettings: ShapeSettings;
   backgroundColor: string;
 }
 
 export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
   ({
     paths,
-    currentPath, // Use prop
-    onCurrentPathChange, // Use prop
+    images, // Destructure new prop
+    currentPath,
+    onCurrentPathChange,
     onPathAdd,
     symmetrySettings,
     animationSettings,
     drawingTools,
-    shapeSettings, // Use prop
+    shapeSettings,
     backgroundColor
   }, ref) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,8 +39,61 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     const animationFrameId = useRef<number | null>(null);
     const lastAnimationTime = useRef<number>(0);
     const totalRotation = useRef<number>(0);
-    const spinDirection = useRef<number>(1); // 1 for CW, -1 for CCW
+    const spinDirection = useRef<number>(1);
     const lastSpinDirectionChangeTime = useRef<number>(0);
+
+    const [loadedHtmlImages, setLoadedHtmlImages] = useState<Record<string, HTMLImageElement>>({});
+
+    useEffect(() => {
+        const promises: Promise<{id: string, img: HTMLImageElement}>[] = [];
+        const imagesToLoadOrUpdate = images.filter(
+            (imgData) => !loadedHtmlImages[imgData.id] || loadedHtmlImages[imgData.id].src !== imgData.src
+        );
+
+        imagesToLoadOrUpdate.forEach(imgData => {
+            promises.push(
+                new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve({ id: imgData.id, img });
+                    img.onerror = () => {
+                         console.error(`Failed to load image ${imgData.id}: ${imgData.src}`);
+                         reject(new Error(`Failed to load image ${imgData.id}`));
+                    };
+                    img.src = imgData.src;
+                })
+            );
+        });
+
+        if (promises.length > 0) {
+            Promise.all(promises)
+                .then(results => {
+                    setLoadedHtmlImages(prev => {
+                        const updated = { ...prev };
+                        results.forEach(r => updated[r.id] = r.img);
+                        return updated;
+                    });
+                })
+                .catch(error => console.error("Error loading one or more images:", error));
+        }
+
+        // Cleanup old images not in current 'images' prop
+        const currentImageIds = new Set(images.map(im => im.id));
+        setLoadedHtmlImages(prev => {
+            const next = { ...prev };
+            let changed = false;
+            Object.keys(next).forEach(id => {
+                if (!currentImageIds.has(id)) {
+                    delete next[id];
+                    changed = true;
+                }
+            });
+            // Only update state if there was an actual change to avoid potential loops if prev was already correct
+            if (changed) return next;
+            return prev; 
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [images]);
+
 
     const getCanvasCoordinates = (event: React.MouseEvent | React.TouchEvent): Point | null => {
       if (!internalCanvasRef.current) return null;
@@ -59,27 +114,21 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const startDrawing = (event: React.MouseEvent | React.TouchEvent) => {
-       if ('touches' in event) {
-           event.preventDefault();
-       }
+       if ('touches' in event) event.preventDefault();
       const point = getCanvasCoordinates(event);
       if (!point) return;
       setIsDrawing(true);
-      onCurrentPathChange([point]); // Start new path using prop handler
+      onCurrentPathChange([point]);
     };
 
     const draw = (event: React.MouseEvent | React.TouchEvent) => {
-       if ('touches' in event) {
-           event.preventDefault();
-       }
+       if ('touches' in event) event.preventDefault();
       if (!isDrawing) return;
       const point = getCanvasCoordinates(event);
       if (!point) return;
-      // Update current path using prop handler
       if (shapeSettings.currentShape === 'freehand') {
           onCurrentPathChange([...currentPath, point]);
       } else {
-          // For shapes, only update the second point (end point)
           if (currentPath.length > 0) {
               onCurrentPathChange([currentPath[0], point]);
           }
@@ -89,65 +138,90 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     const finishDrawing = () => {
       if (!isDrawing || currentPath.length === 0) return;
       setIsDrawing(false);
-
       let finalPathPoints: Point[];
       if (shapeSettings.currentShape !== 'freehand' && currentPath.length === 2) {
-          // Generate shape points based on start and end points
           const canvas = internalCanvasRef.current;
           if (!canvas) return;
           finalPathPoints = drawShape(shapeSettings.currentShape, currentPath[0], currentPath[1], canvas.width, canvas.height);
       } else {
-          // Use the drawn points for freehand
           finalPathPoints = currentPath;
       }
-
-
-       if (finalPathPoints.length >= 2) { // Only add if path has at least 2 points
+       if (finalPathPoints.length >= 2) {
           onPathAdd({
             points: finalPathPoints,
             color: drawingTools.strokeColor,
             lineWidth: drawingTools.lineWidth,
           });
        }
-
-      onCurrentPathChange([]); // Clear current path using prop handler
+      onCurrentPathChange([]);
     };
-
 
     const drawSinglePath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number, currentLineWidthOffset: number = 0) => {
       if (path.length < 2) return;
-
       const effectiveLineWidth = lineWidth + currentLineWidthOffset;
-      // If effective line width is too small (e.g., less than 0.1px), don't draw it.
-      // This creates the "no display" part of the pulse effect.
-      if (effectiveLineWidth < 0.1) {
-        return;
-      }
-
+      if (effectiveLineWidth < 0.1) return;
       ctx.beginPath();
       ctx.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x, path[i].y);
-      }
+      for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
       ctx.strokeStyle = color;
-      ctx.lineWidth = effectiveLineWidth; // Use the calculated effective line width
+      ctx.lineWidth = effectiveLineWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.stroke();
     };
 
-     // Function to draw the temporary shape line while drawing
-      const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
-          if (path.length !== 2) return; // Only draw if start and end points exist
-          ctx.beginPath();
-          ctx.moveTo(path[0].x, path[0].y);
-          ctx.lineTo(path[1].x, path[1].y);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = Math.max(1, lineWidth * 0.5); // Make preview line thinner
-          ctx.setLineDash([5, 5]); // Make it dashed
-          ctx.stroke();
-          ctx.setLineDash([]); // Reset line dash
-      };
+    const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
+        if (path.length !== 2) return;
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        ctx.lineTo(path[1].x, path[1].y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, lineWidth * 0.5);
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    };
+
+    const drawSymmetricImage = (
+        ctx: CanvasRenderingContext2D,
+        canvas: HTMLCanvasElement,
+        htmlImg: HTMLImageElement,
+        imgData: CanvasImage,
+        symmetry: SymmetrySettings
+     ) => {
+        const { x, y, width, height } = imgData;
+        const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
+        const canvasCenterX = canvas.width / 2;
+        const canvasCenterY = canvas.height / 2;
+
+        for (let i = 0; i < numAxes; i++) {
+            const rotationAngle = (i * 2 * Math.PI) / numAxes;
+
+            const applyTransformAndDraw = (currentX: number, currentY: number, scaleX: number = 1, scaleY: number = 1) => {
+                ctx.save();
+                ctx.translate(canvasCenterX, canvasCenterY);
+                ctx.rotate(rotationAngle);
+                ctx.translate(-canvasCenterX, -canvasCenterY);
+
+                ctx.translate(currentX + width / 2, currentY + height / 2);
+                ctx.scale(scaleX, scaleY);
+                ctx.drawImage(htmlImg, -width / 2, -height / 2, width, height);
+                ctx.restore();
+            };
+
+            applyTransformAndDraw(x, y); // Base image
+
+            if (symmetry.mirrorX) {
+                applyTransformAndDraw(canvas.width - x - width, y, -1, 1);
+            }
+            if (symmetry.mirrorY) {
+                applyTransformAndDraw(x, canvas.height - y - height, 1, -1);
+            }
+            if (symmetry.mirrorX && symmetry.mirrorY) {
+                applyTransformAndDraw(canvas.width - x - width, canvas.height - y - height, -1, -1);
+            }
+        }
+     };
 
 
     const renderCanvas = (time: number = 0) => {
@@ -165,7 +239,6 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const centerX = canvas.width / 2;
       const centerY = canvas.height / 2;
 
-      // --- Calculate Animation Values ---
       let currentLineWidthOffset = 0;
        if (animationSettings.isPulsing) {
          const pulseCycle = (time / (1000 / (animationSettings.pulseSpeed / 2))) % (2 * Math.PI);
@@ -180,54 +253,47 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
        if (animationSettings.isSpinning && deltaTime > 0) {
            const now = performance.now();
-           // Initialize lastSpinDirectionChangeTime on first spin or if reset
             if (lastSpinDirectionChangeTime.current === 0 && animationSettings.spinDirectionChangeFrequency > 0) {
                 lastSpinDirectionChangeTime.current = now;
             }
-
            const timeSinceLastChange = (now - lastSpinDirectionChangeTime.current) / 1000;
-
            if (animationSettings.spinDirectionChangeFrequency > 0 &&
                timeSinceLastChange >= animationSettings.spinDirectionChangeFrequency) {
-               if (Math.random() < 0.5) {
-                   spinDirection.current *= -1;
-               }
-               lastSpinDirectionChangeTime.current = now; // Reset timer for next change check
+               if (Math.random() < 0.5) spinDirection.current *= -1;
+               lastSpinDirectionChangeTime.current = now;
            }
-
            const rotationDegreesPerSecond = animationSettings.spinSpeed * spinDirection.current;
            const rotationRadiansPerSecond = rotationDegreesPerSecond * (Math.PI / 180);
            const rotationThisFrame = rotationRadiansPerSecond * (deltaTime / 1000);
            totalRotation.current += rotationThisFrame;
        } else if (!animationSettings.isSpinning) {
-            // If spinning stops, reset relevant spin state
             totalRotation.current = 0;
-            // spinDirection.current = 1; // Keep current direction if spinSpeed is just 0. Or reset.
-            // For simplicity, let's allow spinSpeed to control direction and reset spinDirection.current if speed becomes 0 or spinning is toggled off.
-            lastSpinDirectionChangeTime.current = 0; // Reset for next time spinning starts
+            lastSpinDirectionChangeTime.current = 0;
        }
        const currentRotationAngle = totalRotation.current;
-       // --- End Calculate Animation Values ---
 
-
-      ctx.save();
+      ctx.save(); // Global transform save
       ctx.translate(centerX, centerY);
       if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
       if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
       ctx.translate(-centerX, -centerY);
 
+      // Draw Images first (typically background elements)
+      images.forEach(imgData => {
+        const htmlImg = loadedHtmlImages[imgData.id];
+        if (htmlImg && htmlImg.complete && htmlImg.naturalWidth > 0) {
+          drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings);
+        }
+      });
 
-      // --- Draw Content ---
+      // Draw Paths
       const drawSymmetricPath = (originalPathData: Path | { points: Point[], color: string, lineWidth: number }, isTemporaryShape = false) => {
         const { points: originalPoints, color, lineWidth } = originalPathData;
-
         const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
-
         const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
 
         for (let i = 0; i < numAxes; i++) {
            const angle = (i * 2 * Math.PI) / numAxes;
-
            const transformPoint = (p: Point): Point => {
              let { x, y } = p;
              if (numAxes > 1) {
@@ -240,10 +306,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
              }
              return { x, y };
            };
-
           const baseTransformedPath = originalPoints.map(transformPoint);
           drawFunc(ctx, baseTransformedPath, color, lineWidth, isTemporaryShape ? 0 : currentLineWidthOffset);
-
 
            if (symmetrySettings.mirrorX) {
              const mirroredXPath = baseTransformedPath.map(p => ({x: canvas.width - p.x, y: p.y}));
@@ -259,9 +323,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
            }
         }
       };
-
       paths.forEach(pathData => drawSymmetricPath(pathData));
-
       if (isDrawing && currentPath.length > 0) {
           const isShapePreview = shapeSettings.currentShape !== 'freehand';
           drawSymmetricPath({
@@ -270,19 +332,16 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
               lineWidth: drawingTools.lineWidth,
           }, isShapePreview);
       }
-      // --- End Draw Content ---
+      
+      ctx.restore(); // Global transform restore
 
-      ctx.restore();
-
-      if (animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning) {
+      if (animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || images.some(img => !loadedHtmlImages[img.id]?.complete)) {
         animationFrameId.current = requestAnimationFrame(renderCanvas);
       } else {
         animationFrameId.current = null;
-        // Reset spin-related states only if spinning is explicitly off,
-        // not just because other animations are also off.
         if (!animationSettings.isSpinning) {
           totalRotation.current = 0;
-          spinDirection.current = 1; // Default direction
+          spinDirection.current = 1;
           lastSpinDirectionChangeTime.current = 0;
         }
       }
@@ -295,51 +354,51 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       if (!parent) return;
 
       const resizeObserver = new ResizeObserver(() => {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
-        renderCanvas();
+        if (parent.clientWidth > 0 && parent.clientHeight > 0) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            renderCanvas(); // Re-render on resize
+        }
       });
       resizeObserver.observe(parent);
-
-      canvas.width = parent.clientWidth;
-      canvas.height = parent.clientHeight;
+      if (parent.clientWidth > 0 && parent.clientHeight > 0) {
+          canvas.width = parent.clientWidth;
+          canvas.height = parent.clientHeight;
+      }
       renderCanvas();
 
       return () => {
-        resizeObserver.unobserve(parent);
+        resizeObserver.disconnect(); // Use disconnect() for ResizeObserver
         if (animationFrameId.current) {
           cancelAnimationFrame(animationFrameId.current);
           animationFrameId.current = null;
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]); // Only re-setup observer on background change (rare, usually for full redraw)
+    }, [backgroundColor]);
 
      useEffect(() => {
-       renderCanvas(); // Initial render, or re-render if settings change
-
-       const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning;
+       renderCanvas(); 
+       const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
+       const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || isLoadingImages;
 
        if (shouldAnimate && !animationFrameId.current) {
          lastAnimationTime.current = performance.now();
-         // Reset spin direction timer if spinning starts and frequency is involved
          if (animationSettings.isSpinning && animationSettings.spinDirectionChangeFrequency > 0) {
             lastSpinDirectionChangeTime.current = performance.now();
          } else if (!animationSettings.isSpinning) {
-            // If spinning is not active, ensure rotation is reset
             totalRotation.current = 0;
-            spinDirection.current = 1; // Reset to default direction
-            lastSpinDirectionChangeTime.current = 0; // Reset timer
+            spinDirection.current = 1;
+            lastSpinDirectionChangeTime.current = 0;
          }
          animationFrameId.current = requestAnimationFrame(renderCanvas);
        } else if (!shouldAnimate && animationFrameId.current) {
          cancelAnimationFrame(animationFrameId.current);
          animationFrameId.current = null;
-         // Explicitly reset spin state when all animations are stopped to ensure clean state
          totalRotation.current = 0;
          spinDirection.current = 1;
          lastSpinDirectionChangeTime.current = 0;
-         renderCanvas(); // Render one last static frame
+         renderCanvas();
        }
 
        return () => {
@@ -349,7 +408,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings]);
+     }, [paths, images, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, isDrawing, currentPath, backgroundColor, shapeSettings]);
 
 
     return (
@@ -363,7 +422,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onTouchMove={draw}
         onTouchEnd={finishDrawing}
         className="h-full w-full touch-none bg-transparent cursor-crosshair"
-        data-ai-hint="abstract art"
+        data-ai-hint="abstract art images"
       />
     );
   }

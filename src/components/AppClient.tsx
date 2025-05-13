@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Point, Path } from "@/types/drawing";
+import type { Point, Path, CanvasImage } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
 import { ControlPanel } from '@/components/controls/ControlPanel';
@@ -11,6 +11,7 @@ import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useToast } from "@/hooks/use-toast";
 
 export interface SymmetrySettings {
   mirrorX: boolean;
@@ -40,12 +41,14 @@ export interface ShapeSettings {
   currentShape: 'freehand' | 'triangle' | 'square' | 'circle' | 'pentagon';
 }
 
-// Removed PreviewMode type import
-
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Point[]>([]);
   const [pathHistory, setPathHistory] = useState<Path[][]>([]);
+  const [images, setImages] = useState<CanvasImage[]>([]);
+  // imageHistory could be used for undoing image additions if implemented later
+  // const [imageHistory, setImageHistory] = useState<CanvasImage[][]>([]);
+
   const [symmetry, setSymmetry] = useState<SymmetrySettings>({
     mirrorX: false,
     mirrorY: false,
@@ -70,13 +73,12 @@ export default function AppClient() {
   const [shapeSettings, setShapeSettings] = useState<ShapeSettings>({
     currentShape: 'freehand',
   });
-  // Removed previewMode state
-  // const [previewMode, setPreviewMode] = useState<PreviewMode>('userDrawn');
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { theme, systemTheme } = useTheme();
+  const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [mainCanvasDimensions, setMainCanvasDimensions] = useState({ width: 800, height: 600 }); // Default values
+  const [mainCanvasDimensions, setMainCanvasDimensions] = useState({ width: 800, height: 600 });
 
    useEffect(() => {
     const currentTheme = theme === 'system' ? systemTheme : theme;
@@ -91,24 +93,21 @@ export default function AppClient() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-       // Get the parent element to observe its size
       const parentElement = canvas.parentElement;
       if (!parentElement) return;
 
       const observer = new ResizeObserver(() => {
-        // Use clientWidth/clientHeight of the parent for responsive size
         if (parentElement.clientWidth > 0 && parentElement.clientHeight > 0) {
             setMainCanvasDimensions({ width: parentElement.clientWidth, height: parentElement.clientHeight });
         }
       });
-       // Initialize with parent size
        if (parentElement.clientWidth > 0 && parentElement.clientHeight > 0) {
           setMainCanvasDimensions({ width: parentElement.clientWidth, height: parentElement.clientHeight });
        }
-      observer.observe(parentElement); // Observe parent for size changes
+      observer.observe(parentElement);
       return () => observer.disconnect();
     }
-  }, []); // Dependency array includes canvasRef, but it's stable
+  }, []);
 
 
   const handlePathAdd = useCallback((newPath: Path) => {
@@ -117,11 +116,71 @@ export default function AppClient() {
      setCurrentPath([]);
   }, [paths]);
 
+  const handleImageUpload = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        const img = new Image();
+        img.onload = () => {
+          const canvasWidth = mainCanvasDimensions.width || 800; // Fallback if dimensions not ready
+          const canvasHeight = mainCanvasDimensions.height || 600;
+          
+          // Scale image to fit within 30% of the smallest canvas dimension, or max 300px
+          const maxDimPercentage = Math.min(canvasWidth, canvasHeight) * 0.3;
+          const maxDimAbsolute = 300;
+          const maxDim = Math.min(maxDimPercentage, maxDimAbsolute);
+
+          let w = img.naturalWidth;
+          let h = img.naturalHeight;
+
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = (h / w) * maxDim;
+              w = maxDim;
+            } else {
+              w = (w / h) * maxDim;
+              h = maxDim;
+            }
+          }
+          
+          w = Math.min(w, canvasWidth * 0.9); // Ensure it's not too large for canvas
+          h = Math.min(h, canvasHeight * 0.9);
+
+          const newImage: CanvasImage = {
+            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            src: dataUrl,
+            x: (canvasWidth - w) / 2,
+            y: (canvasHeight - h) / 2,
+            width: w,
+            height: h,
+            originalWidth: img.naturalWidth,
+            originalHeight: img.naturalHeight,
+          };
+          // setImageHistory(prev => [...prev, images]); // For undo, if implemented
+          setImages(prev => [...prev, newImage]);
+          toast({ title: "Image Added", description: "The image has been added to the canvas." });
+        };
+        img.onerror = () => {
+          toast({ variant: "destructive", title: "Error", description: "Could not load image file." });
+        };
+        img.src = dataUrl;
+      }
+    };
+    reader.onerror = () => {
+       toast({ variant: "destructive", title: "Error", description: "Could not read image file." });
+    };
+    reader.readAsDataURL(file);
+  }, [mainCanvasDimensions, toast]); // Removed images from deps to avoid issues with setImageHistory
+
   const handleClearCanvas = useCallback(() => {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths([]);
      setCurrentPath([]);
-  }, [paths]);
+     // setImageHistory(prev => [...prev, images]); // For undo, if implemented
+     setImages([]);
+     toast({ title: "Canvas Cleared", description: "Drawing and images have been cleared." });
+  }, [paths, toast]); // Removed images from deps
 
   const handleUndo = useCallback(() => {
     if (pathHistory.length === 0) return;
@@ -129,29 +188,30 @@ export default function AppClient() {
     setPaths(previousPaths);
     setPathHistory((prevHistory) => prevHistory.slice(0, -1));
     setCurrentPath([]);
+    // Note: Image undo is not implemented in this pass.
   }, [pathHistory]);
 
   const canUndo = pathHistory.length > 0;
 
-  const handleSaveDrawing = useCallback(() => {
+  const handleSaveDrawing = useCallback(async () => {
     if (canvasRef.current) {
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
-      const mainCanvas = canvasRef.current; // This ref is attached to DrawingCanvas
+      
+      if (!tempCtx) {
+        toast({ variant: "destructive", title: "Error", description: "Could not create save context." });
+        return;
+      }
 
-      if (!tempCtx) return;
-
-      // Ensure positive dimensions before setting
       const saveWidth = Math.max(1, mainCanvasDimensions.width);
       const saveHeight = Math.max(1, mainCanvasDimensions.height);
-
       tempCanvas.width = saveWidth;
       tempCanvas.height = saveHeight;
 
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-       const drawStaticPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
+      const drawStaticPath = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
           if (path.length < 2) return;
           ctx.beginPath();
           ctx.moveTo(path[0].x, path[0].y);
@@ -174,7 +234,6 @@ export default function AppClient() {
 
         for (let i = 0; i < numAxes; i++) {
           const angle = (i * 2 * Math.PI) / numAxes;
-
           const transformPoint = (p: Point): Point => {
             let { x, y } = p;
              if (numAxes > 1) {
@@ -187,7 +246,6 @@ export default function AppClient() {
              }
             return { x, y };
           };
-
 
           const baseTransformedPath = originalPath.points.map(transformPoint);
           drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth);
@@ -206,17 +264,40 @@ export default function AppClient() {
           }
         }
       };
-
       paths.forEach(path => drawStaticSymmetricPath(path));
 
+      // Draw images (simplified for save: no live symmetry/animation effects from DrawingCanvas)
+      const imageLoadPromises = images.map(imgData => {
+        return new Promise<void>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            // Draw image at its stored position and size
+            tempCtx.drawImage(img, imgData.x, imgData.y, imgData.width, imgData.height);
+            resolve();
+          };
+          img.onerror = (err) => {
+            console.error("Error loading image for save:", imgData.src, err);
+            // Resolve even on error to not block saving other elements, or reject if all must succeed
+            resolve(); 
+          };
+          img.src = imgData.src;
+        });
+      });
 
-      const image = tempCanvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = 'hegart-drawing.png';
-      link.href = image;
-      link.click();
+      try {
+        await Promise.all(imageLoadPromises);
+        const imageURL = tempCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = 'hegart-drawing.png';
+        link.href = imageURL;
+        link.click();
+        toast({ title: "Drawing Saved", description: "Image exported as PNG." });
+      } catch (error) {
+        console.error("Could not save drawing due to image loading error:", error);
+        toast({ variant: "destructive", title: "Save Error", description: "Failed to process images for saving." });
+      }
     }
-  }, [canvasRef, paths, tools.backgroundColor, symmetry, mainCanvasDimensions]);
+  }, [canvasRef, paths, images, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
 
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
@@ -258,15 +339,15 @@ export default function AppClient() {
               onUndo={handleUndo}
               canUndo={canUndo}
               mainCanvasDimensions={mainCanvasDimensions}
-              // Removed previewMode and onPreviewModeChange props
+              onImageUpload={handleImageUpload} // Pass image upload handler
             />
           </Sidebar>
           <SidebarInset className="flex-1 overflow-auto p-0">
-             {/* Wrap canvas in a div that allows it to shrink and be observed */}
              <div className="relative w-full h-full overflow-hidden">
                 <DrawingCanvas
-                  ref={canvasRef} // Pass ref here
+                  ref={canvasRef}
                   paths={paths}
+                  images={images} // Pass images
                   currentPath={currentPath}
                   onCurrentPathChange={setCurrentPath}
                   onPathAdd={handlePathAdd}

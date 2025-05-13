@@ -1,9 +1,9 @@
 
 "use client";
 
-import type { Point, Path } from "@/types/drawing";
+import type { Point, Path, CanvasImage } from "@/types/drawing"; // Added CanvasImage
 import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings } from "@/components/AppClient";
-import { Accordion } from "@/components/ui/accordion";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SymmetryControl } from "./SymmetrySettings";
 import { AnimationControl } from "./AnimationSettings";
@@ -13,7 +13,10 @@ import { ActionToolbar } from "./ActionToolbar";
 import { PreviewCanvas } from "../canvas/PreviewCanvas";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DraftingCompass, ZoomIn } from "lucide-react"; // Removed RadioGroup imports
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { DraftingCompass, ZoomIn, Image as ImageIcon, Upload } from "lucide-react";
 
 interface ControlPanelProps {
   symmetry: SymmetrySettings;
@@ -24,14 +27,14 @@ interface ControlPanelProps {
   onToolsChange: (settings: DrawingTools) => void;
   shapes: ShapeSettings;
   onShapesChange: (settings: ShapeSettings) => void;
-  activePath: Point[]; // The path currently being drawn
-  completedPaths: Path[]; // All paths already added to the main canvas
+  activePath: Point[];
+  completedPaths: Path[];
   onClear: () => void;
   onSave: () => void;
   onUndo: () => void;
   canUndo: boolean;
   mainCanvasDimensions: { width: number, height: number };
-  // Removed previewMode and onPreviewModeChange props
+  onImageUpload: (file: File) => void; // New prop for image upload
 }
 
 export function ControlPanel({
@@ -50,6 +53,7 @@ export function ControlPanel({
   onUndo,
   canUndo,
   mainCanvasDimensions,
+  onImageUpload, // Destructure new prop
 }: ControlPanelProps) {
   return (
     <ScrollArea className="h-full">
@@ -57,23 +61,20 @@ export function ControlPanel({
         <Card>
           <CardHeader className="p-3 pb-1">
              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <ZoomIn className="h-5 w-5" /> {/* Changed icon */}
+                <ZoomIn className="h-5 w-5" />
                 Drawing Preview
              </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-1">
              <div className="aspect-video w-full bg-muted rounded-md border border-input overflow-hidden">
                 <PreviewCanvas
-                  // activePath={activePath} // No longer needed for 'userDrawn' preview
                   completedPaths={completedPaths}
-                  drawingTools={tools} // Pass tools for background color
+                  drawingTools={tools}
                   mainCanvasDimensions={mainCanvasDimensions}
-                  // Removed previewMode prop
                 />
              </div>
-             {/* Removed RadioGroup for mode selection */}
               <p className="text-xs text-muted-foreground mt-1">
-                Shows current drawing. Pan (drag) and zoom (scroll).
+                Shows current drawing. Pan (drag) and zoom (scroll). Uploaded images are not shown here.
               </p>
           </CardContent>
         </Card>
@@ -89,11 +90,43 @@ export function ControlPanel({
         <Separator />
         <Accordion
           type="multiple"
-          defaultValue={["shapes", "drawing-tools", "symmetry", "animation"]}
+          defaultValue={["shapes", "drawing-tools", "image-controls", "symmetry", "animation"]}
           className="w-full"
         >
           <ShapeControl shapes={shapes} onShapesChange={onShapesChange} />
           <DrawingToolControl tools={tools} onToolsChange={onToolsChange} />
+          
+          <AccordionItem value="image-controls">
+            <AccordionTrigger>
+              <div className="flex items-center gap-2">
+                <ImageIcon className="h-5 w-5" />
+                Image Controls
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-4 pt-4">
+              <div>
+                <Input
+                  id="imageUpload"
+                  type="file"
+                  accept="image/*,.heic,.heif" // Added HEIC/HEIF common mobile formats
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      onImageUpload(e.target.files[0]);
+                      e.target.value = ''; // Reset file input to allow uploading same file again
+                    }
+                  }}
+                />
+                <Button asChild variant="outline" className="w-full">
+                  <Label htmlFor="imageUpload" className="cursor-pointer">
+                    <Upload className="mr-2 h-4 w-4" /> Select Image File
+                  </Label>
+                </Button>
+                <p className="text-xs text-muted-foreground mt-1">Upload an image to add it to the canvas.</p>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           <SymmetryControl symmetry={symmetry} onSymmetryChange={onSymmetryChange} />
           <AnimationControl animation={animation} onAnimationChange={onAnimationChange} />
         </Accordion>
