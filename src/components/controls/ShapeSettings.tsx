@@ -38,23 +38,28 @@ export function ShapeControl({ shapes, onShapesChange }: ShapeControlProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectLabel>Basic</SelectLabel>
+              <SelectLabel className="underline">Basic</SelectLabel>
               <SelectItem value="freehand">Freehand</SelectItem>
               <SelectItem value="line">Line</SelectItem>
               <SelectItem value="circle">Circle</SelectItem>
               <SelectItem value="ellipse">Ellipse</SelectItem>
             </SelectGroup>
             <SelectGroup>
-              <SelectLabel>Polygons</SelectLabel>
+              <SelectLabel className="underline">Polygons</SelectLabel>
               <SelectItem value="triangle">Triangle</SelectItem>
               <SelectItem value="square">Square</SelectItem>
               <SelectItem value="pentagon">Pentagon</SelectItem>
               <SelectItem value="hexagon">Hexagon</SelectItem>
             </SelectGroup>
             <SelectGroup>
-              <SelectLabel>Other</SelectLabel>
+              <SelectLabel className="underline">Other Symbols &amp; Icons</SelectLabel>
               <SelectItem value="star">Star (5-point)</SelectItem>
               <SelectItem value="arrow">Arrow</SelectItem>
+              <SelectItem value="heart">Heart</SelectItem>
+              <SelectItem value="cloud">Cloud</SelectItem>
+              <SelectItem value="speechBubble">Speech Bubble</SelectItem>
+              <SelectItem value="gear">Gear</SelectItem>
+              <SelectItem value="checkMark">Check Mark</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -65,3 +70,4 @@ export function ShapeControl({ shapes, onShapesChange }: ShapeControlProps) {
     </div>
   );
 }
+

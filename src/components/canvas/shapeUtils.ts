@@ -128,7 +128,7 @@ const generateArrow = (start: Point, end: Point, headSizeFactor: number = 0.1): 
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    const headSize = Math.max(10, length * headSizeFactor); // Ensure minimum head size
+    const headSize = Math.max(10, length * headSizeFactor); 
 
     const angle = Math.atan2(dy, dx);
 
@@ -138,6 +138,177 @@ const generateArrow = (start: Point, end: Point, headSizeFactor: number = 0.1): 
         { x: end.x - headSize * Math.cos(angle - Math.PI / 6), y: end.y - headSize * Math.sin(angle - Math.PI / 6) }, 
         end,   
         { x: end.x - headSize * Math.cos(angle + Math.PI / 6), y: end.y - headSize * Math.sin(angle + Math.PI / 6) }, 
+    ];
+};
+
+const generateHeart = (start: Point, end: Point): Point[] => {
+    // Uses bounding box defined by start and end
+    const minX = Math.min(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxX = Math.max(start.x, end.x);
+    const maxY = Math.max(start.y, end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    if (width === 0 || height === 0) return [start, end];
+
+    const points: Point[] = [];
+    // Simplified heart shape using line segments (approximating Bezier curves)
+    // Top-left lobe
+    points.push({ x: minX + width * 0.5, y: minY + height * 0.3 });
+    points.push({ x: minX + width * 0.15, y: minY });
+    points.push({ x: minX, y: minY + height * 0.4 });
+    // Bottom point
+    points.push({ x: minX + width * 0.5, y: maxY });
+    // Top-right lobe
+    points.push({ x: maxX, y: minY + height * 0.4 });
+    points.push({ x: minX + width * 0.85, y: minY });
+    points.push({ x: minX + width * 0.5, y: minY + height * 0.3 }); // Close the shape
+
+    return points;
+};
+
+const generateCloud = (start: Point, end: Point): Point[] => {
+    const minX = Math.min(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxX = Math.max(start.x, end.x);
+    const maxY = Math.max(start.y, end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    if (width < 10 || height < 10) return [start, end]; // Min size for a cloud
+
+    const points: Point[] = [];
+    const segments = 12; // Per "bubble"
+
+    // Bottom flat-ish part
+    points.push({ x: minX + width * 0.2, y: maxY });
+    points.push({ x: minX + width * 0.8, y: maxY });
+
+    // Right bubble
+    let cx = minX + width * 0.75;
+    let cy = minY + height * 0.7;
+    let rx = width * 0.25;
+    let ry = height * 0.3;
+    for (let i = 0; i <= segments / 2; i++) {
+        const angle = Math.PI + (i * Math.PI) / segments; // Half circle
+        points.push({ x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
+    }
+
+    // Top-middle bubble
+    cx = minX + width * 0.5;
+    cy = minY + height * 0.35;
+    rx = width * 0.3;
+    ry = height * 0.35;
+     for (let i = 0; i <= segments; i++) {
+        const angle = Math.PI + (i * Math.PI*2) / segments; 
+        if(angle > Math.PI * 1.2 && angle < Math.PI * 2.8) { // Partial arc
+             points.push({ x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
+        }
+    }
+    
+    // Left bubble
+    cx = minX + width * 0.25;
+    cy = minY + height * 0.7;
+    rx = width * 0.25;
+    ry = height * 0.3;
+    for (let i = segments / 2; i <= segments; i++) {
+        const angle = Math.PI + (i * Math.PI) / segments; // Half circle
+        points.push({ x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
+    }
+    
+    points.push({ x: minX + width * 0.2, y: maxY }); // Close shape
+
+    return points;
+};
+
+const generateSpeechBubble = (start: Point, end: Point): Point[] => {
+    const minX = Math.min(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxX = Math.max(start.x, end.x);
+    const maxY = Math.max(start.y, end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    if (width < 10 || height < 10) return [start, end];
+
+    const bubbleHeight = height * 0.8; // Main bubble part
+    const tailHeight = height * 0.2;
+
+    return [
+        { x: minX, y: minY }, // Top-left
+        { x: maxX, y: minY }, // Top-right
+        { x: maxX, y: minY + bubbleHeight }, // Bottom-right of bubble
+        // Tail (pointing downwards, slightly to the left)
+        { x: minX + width * 0.7, y: minY + bubbleHeight },
+        { x: minX + width * 0.5, y: maxY }, // Tip of tail
+        { x: minX + width * 0.4, y: minY + bubbleHeight },
+        { x: minX, y: minY + bubbleHeight }, // Bottom-left of bubble
+        { x: minX, y: minY }, // Close
+    ];
+};
+
+const generateGear = (start: Point, end: Point, numTeeth: number = 8): Point[] => {
+    const points: Point[] = [];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const outerRadius = Math.sqrt(dx * dx + dy * dy) / 2;
+    const innerRadius = outerRadius * 0.7; // Radius for the valleys between teeth
+    const toothDepthRadius = outerRadius * 0.85; // Where the flat top of tooth starts
+
+    const centerX = start.x + dx / 2;
+    const centerY = start.y + dy / 2;
+
+    if (outerRadius < 5) return [start, end];
+
+    const angleStep = (2 * Math.PI) / numTeeth;
+
+    for (let i = 0; i < numTeeth; i++) {
+        const angle = i * angleStep;
+        // Valley point (inner)
+        points.push({
+            x: centerX + innerRadius * Math.cos(angle - angleStep / 4),
+            y: centerY + innerRadius * Math.sin(angle - angleStep / 4)
+        });
+        // Side of tooth (rising)
+        points.push({
+            x: centerX + toothDepthRadius * Math.cos(angle + angleStep / 8),
+            y: centerY + toothDepthRadius * Math.sin(angle + angleStep / 8)
+        });
+        // Outer point 1 of tooth
+        points.push({
+            x: centerX + outerRadius * Math.cos(angle + angleStep / 4),
+            y: centerY + outerRadius * Math.sin(angle + angleStep / 4)
+        });
+        // Outer point 2 of tooth
+        points.push({
+            x: centerX + outerRadius * Math.cos(angle + angleStep * 3/8),
+            y: centerY + outerRadius * Math.sin(angle + angleStep * 3/8)
+        });
+         // Side of tooth (falling)
+        points.push({
+            x: centerX + toothDepthRadius * Math.cos(angle + angleStep * 5/8),
+            y: centerY + toothDepthRadius * Math.sin(angle + angleStep * 5/8)
+        });
+    }
+    points.push({...points[0]});
+    return points;
+};
+
+const generateCheckMark = (start: Point, end: Point): Point[] => {
+    const minX = Math.min(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxX = Math.max(start.x, end.x);
+    const maxY = Math.max(start.y, end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+
+    if (width < 5 || height < 5) return [start, end];
+
+    return [
+        { x: minX, y: minY + height * 0.5 }, // Left start
+        { x: minX + width * 0.4, y: maxY }, // Bottom V point
+        { x: maxX, y: minY },                // Right top end
     ];
 };
 
@@ -160,11 +331,7 @@ export function drawShape(
 ): Point[] {
     let points: Point[] = [];
 
-    // Prevent issues with identical start and end points for some shapes
     if (start.x === end.x && start.y === end.y && shape !== 'freehand' && shape !== 'line') {
-        // For most shapes, identical points mean no shape or a single point.
-        // We can create a tiny line to make it visible or return just the start point.
-        // Let's return a small representation for visual feedback if possible.
         const tinyOffset = 1;
         end = { x: start.x + tinyOffset, y: start.y + tinyOffset };
     }
@@ -193,13 +360,28 @@ export function drawShape(
             points = generateRegularPolygon(6, start, end);
             break;
         case 'star':
-            points = generateStar(start, end); // Default 5-point star
+            points = generateStar(start, end);
             break;
         case 'arrow':
             points = generateArrow(start, end);
             break;
-        case 'freehand': // Freehand is handled by AppClient, this case is for completeness
-             return [start, end]; // Or simply currentPath in AppClient
+        case 'heart':
+            points = generateHeart(start, end);
+            break;
+        case 'cloud':
+            points = generateCloud(start, end);
+            break;
+        case 'speechBubble':
+            points = generateSpeechBubble(start, end);
+            break;
+        case 'gear':
+            points = generateGear(start, end);
+            break;
+        case 'checkMark':
+            points = generateCheckMark(start, end);
+            break;
+        case 'freehand': 
+             return [start, end]; 
         default:
             return [];
     }
@@ -213,3 +395,4 @@ export function drawShape(
 
     return points;
 }
+

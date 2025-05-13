@@ -93,9 +93,7 @@ export default function AppClient() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
   
-  // State for which buttons are visually active/selected in the header
   const [activeHeaderButtons, setActiveHeaderButtons] = useState<Set<ActiveSectionType>>(() => new Set<ActiveSectionType>(['shapes']));
-  // State for which section's content is currently displayed in the sidebar
   const [displayedSidebarSection, setDisplayedSidebarSection] = useState<ActiveSectionType>('shapes');
   
   const { theme, systemTheme } = useTheme();
@@ -143,7 +141,7 @@ export default function AppClient() {
      setPathHistory((prevHistory) => [...prevHistory, paths]);
      setPaths((prevPaths) => [...prevPaths, newPath]);
      setCurrentPath([]);
-     setSelectedImageId(null); // Deselect image when drawing
+     setSelectedImageId(null); 
   }, [paths]);
 
   const handleImageUpload = useCallback((file: File) => {
@@ -187,7 +185,7 @@ export default function AppClient() {
             originalHeight: img.naturalHeight,
           };
           setImages(prev => [...prev, newImage]);
-          setSelectedImageId(newImage.id); // Auto-select new image
+          setSelectedImageId(newImage.id); 
           toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
         };
         img.onerror = () => {
@@ -221,7 +219,7 @@ export default function AppClient() {
   }, [paths, toast]);
 
   const handleUndo = useCallback(() => {
-    if (images.length > 0 && selectedImageId) { // Simplistic undo for last image placement if an image is selected
+    if (images.length > 0 && selectedImageId) { 
         const lastImage = images[images.length -1];
         if(lastImage.id === selectedImageId){
              setImages(prev => prev.slice(0, -1));
@@ -242,8 +240,8 @@ export default function AppClient() {
 
 
   const handleSaveDrawing = useCallback(async () => {
-    setSelectedImageId(null); // Deselect image before saving
-    await new Promise(resolve => setTimeout(resolve, 50)); // Give canvas time to re-render without selection box
+    setSelectedImageId(null); 
+    await new Promise(resolve => setTimeout(resolve, 50)); 
 
     if (canvasRef.current) {
       const tempCanvas = document.createElement('canvas');
@@ -321,7 +319,6 @@ export default function AppClient() {
         return new Promise<void>((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
-            // Apply symmetry for images during save
             const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
             const canvasCenterX = tempCanvas.width / 2;
             const canvasCenterY = tempCanvas.height / 2;
@@ -394,7 +391,7 @@ export default function AppClient() {
   }, [theme, systemTheme, handleClearCanvas, toast]);
 
   const handleStartRecording = useCallback(() => {
-    setSelectedImageId(null); // Deselect image before recording
+    setSelectedImageId(null); 
     if (!canvasRef.current) {
       toast({ variant: "destructive", title: "Recording Error", description: "Canvas not available." });
       return;
@@ -455,7 +452,7 @@ export default function AppClient() {
         return newActiveButtons;
     });
 
-    setDisplayedSidebarSection(sectionName);
+    setDisplayedSidebarSection(sectionName); // Keep this to potentially highlight the last clicked one if needed
 
     if (isMobile) {
         setIsMobileSidebarOpen(true);
@@ -476,24 +473,69 @@ export default function AppClient() {
 
   const renderActiveSectionContent = () => {
     const commonProps = { mainCanvasDimensions };
-    switch (displayedSidebarSection) {
-      case 'preview':
-        return <PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
-      case 'actions':
-        return <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
-      case 'shapes':
-        return <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
-      case 'tools':
-        return <DrawingToolControl tools={tools} onToolsChange={setTools} />;
-      case 'image':
-        return <ImageUploadControl onImageUpload={handleImageUpload} {...commonProps} />;
-      case 'symmetry':
-        return <SymmetryControl symmetry={symmetry} onSymmetryChange={setSymmetry} />;
-      case 'animation':
-        return <AnimationControl animation={animation} onAnimationChange={setAnimation} />;
-      default:
-        return <div className="p-4 text-muted-foreground">Select a section from the header.</div>;
+    const sectionOrder: ActiveSectionType[] = ['preview', 'actions', 'shapes', 'tools', 'image', 'symmetry', 'animation'];
+    const componentsToRender: JSX.Element[] = [];
+
+    if (activeHeaderButtons.size === 0) {
+      return <div className="p-4 text-muted-foreground">Select a section from the header.</div>;
     }
+
+    // If only one button is active, show only that section's content
+    if (activeHeaderButtons.size === 1) {
+      const singleActiveSection = Array.from(activeHeaderButtons)[0];
+      switch (singleActiveSection) {
+        case 'preview':
+          return <PreviewCanvas completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
+        case 'actions':
+          return <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
+        case 'shapes':
+          return <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
+        case 'tools':
+          return <DrawingToolControl tools={tools} onToolsChange={setTools} />;
+        case 'image':
+          return <ImageUploadControl onImageUpload={handleImageUpload} {...commonProps} />;
+        case 'symmetry':
+          return <SymmetryControl symmetry={symmetry} onSymmetryChange={setSymmetry} />;
+        case 'animation':
+          return <AnimationControl animation={animation} onAnimationChange={setAnimation} />;
+        default:
+          return <div className="p-4 text-muted-foreground">Error: Unknown section selected.</div>;
+      }
+    }
+
+    // If multiple buttons are active, render them in the defined order
+    for (const sectionName of sectionOrder) {
+      if (activeHeaderButtons.has(sectionName)) {
+        let sectionContent: JSX.Element | null = null;
+        switch (sectionName) {
+          case 'preview':
+            sectionContent = <PreviewCanvas key="preview" completedPaths={paths} drawingTools={tools} mainCanvasDimensions={mainCanvasDimensions} />;
+            break;
+          case 'actions':
+            sectionContent = <ActionToolbar key="actions" onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
+            break;
+          case 'shapes':
+            sectionContent = <ShapeControl key="shapes" shapes={shapeSettings} onShapesChange={setShapeSettings} />;
+            break;
+          case 'tools':
+            sectionContent = <DrawingToolControl key="tools" tools={tools} onToolsChange={setTools} />;
+            break;
+          case 'image':
+            sectionContent = <ImageUploadControl key="image" onImageUpload={handleImageUpload} {...commonProps} />;
+            break;
+          case 'symmetry':
+            sectionContent = <SymmetryControl key="symmetry" symmetry={symmetry} onSymmetryChange={setSymmetry} />;
+            break;
+          case 'animation':
+            sectionContent = <AnimationControl key="animation" animation={animation} onAnimationChange={setAnimation} />;
+            break;
+        }
+        if (sectionContent) {
+          componentsToRender.push(sectionContent);
+        }
+      }
+    }
+    return <>{componentsToRender}</>;
   };
 
   const sidebarOpenState = isMobile ? isMobileSidebarOpen : isSidebarPinned;
@@ -547,14 +589,14 @@ export default function AppClient() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar
             className="border-r md:w-80 lg:w-96 z-10"
-            collapsible={isMobile ? "none" : "icon"} // Icon collapse only on desktop
+            collapsible={isMobile ? "none" : "icon"} 
             open={sidebarOpenState}
             onOpenChange={sidebarOnOpenChange}
             side="left"
           >
             <ScrollArea className="h-full">
-              <SidebarContent className="p-0"> {/* Remove padding if children handle it */}
-                 <div className="p-4 space-y-4"> {/* Add padding inside ScrollArea's child */}
+              <SidebarContent className="p-0"> 
+                 <div className="p-4 space-y-4"> 
                   {renderActiveSectionContent()}
                  </div>
               </SidebarContent>

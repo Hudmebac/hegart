@@ -1,3 +1,4 @@
+
 export interface Point {
   x: number;
   y: number;
@@ -32,4 +33,10 @@ export type ShapeType =
   | 'pentagon' 
   | 'hexagon' 
   | 'star' 
-  | 'arrow';
+  | 'arrow'
+  | 'heart'
+  | 'cloud'
+  | 'speechBubble'
+  | 'gear'
+  | 'checkMark';
+
