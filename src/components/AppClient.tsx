@@ -696,7 +696,7 @@ export default function AppClient() {
                     let sectionContent: JSX.Element | null = null;
                     switch (sectionConfig.name) {
                         case 'actions':
-                            sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} />;
+                            sectionContent = <ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} />;
                             break;
                         case 'shapes':
                             sectionContent = <ShapeControl shapeSettings={shapeSettings} onShapeSettingsChange={setShapeSettings} textSettings={textSettings} onTextSettingsChange={setTextSettings} />;
@@ -747,7 +747,7 @@ export default function AppClient() {
 
         switch (sectionName) {
           case 'actions':
-            sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode}/></div>;
+            sectionContent = <div key="actions" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ActionToolbar onClear={handleClearCanvas} onSave={handleSaveDrawing} onUndo={handleUndo} canUndo={canUndo} onResetSettings={handleResetSettings} isRecording={isRecording} onStartRecording={handleStartRecording} onStopRecording={handleStopRecording}/></div>;
                             break;
           case 'shapes':
             sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapeSettings={shapeSettings} onShapeSettingsChange={setShapeSettings} textSettings={textSettings} onTextSettingsChange={setTextSettings} /></div>;

@@ -2,7 +2,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Eraser, Save, Undo2, RotateCcw, CircleDot, Square as StopIcon, PaintBucket } from "lucide-react"; 
+import { Eraser, Save, Undo2, RotateCcw, CircleDot, Square as StopIcon } from "lucide-react"; 
 import {
   Tooltip,
   TooltipContent,
@@ -30,8 +30,6 @@ interface ActionToolbarProps {
   isRecording: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
-  isFillModeActive: boolean;
-  onToggleFillMode: () => void;
 }
 
 export function ActionToolbar({ 
@@ -43,8 +41,6 @@ export function ActionToolbar({
   isRecording,
   onStartRecording,
   onStopRecording,
-  isFillModeActive,
-  onToggleFillMode,
 }: ActionToolbarProps) {
   return (
     <div className="flex flex-col space-y-2">
@@ -59,20 +55,6 @@ export function ActionToolbar({
             </TooltipTrigger>
             <TooltipContent>
               <p>Undo last drawing or fill action</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant={isFillModeActive ? "secondary" : "outline"} onClick={onToggleFillMode} className="w-full">
-                <PaintBucket className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isFillModeActive ? "Deactivate Fill Tool. Click shapes to fill." : "Activate Fill Tool"}</p>
-              <p className="text-xs text-muted-foreground">{isFillModeActive ? "Current Fill Color: Active" : "Current Fill Color: Inactive"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
