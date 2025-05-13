@@ -168,7 +168,7 @@ export default function AppClient() {
      setPaths((prevPaths) => [...prevPaths, augmentedPath]);
      setCurrentPath([]);
      setSelectedImageId(null); 
-     setIsFillModeActive(false); // Turn off fill mode after drawing
+     // setIsFillModeActive(false); // Optionally turn off fill mode after drawing a shape
   }, [paths, shapeSettings.isFixedShape, shapeSettings.excludeFromAnimation]);
 
   const handleFillPath = useCallback((pathIndex: number, fillColor: string) => {
@@ -264,27 +264,21 @@ export default function AppClient() {
         setPathHistory((prevHistory) => prevHistory.slice(0, -1));
         setCurrentPath([]); 
         setSelectedImageId(null); 
-        setIsFillModeActive(false); 
+        // setIsFillModeActive(false); // Don't change fill mode on undo
         toast({ title: "Undo Successful", description: "Last drawing or fill action undone." });
         return;
     }
 
-    if (images.length > 0 && selectedImageId) { 
-        const lastImage = images.find(img => img.id === selectedImageId); 
-        if(lastImage){ 
-             setImages(prev => prev.filter(img => img.id !== selectedImageId));
-             setSelectedImageId(null);
-             toast({ title: "Image Removed", description: "Selected image was removed."});
-             return;
-        }
-    }
-     if (images.length > 0) {
+    // Simplified image undo: remove last added if no path history
+    // More complex image undo (specific selected image) would need its own history
+    if (images.length > 0) { 
         setImages(prev => prev.slice(0, -1));
-        setSelectedImageId(null);
+        setSelectedImageId(null); // Deselect if the removed image was selected
         toast({ title: "Image Removed", description: "Last added image was removed."});
         return;
     }
-  }, [pathHistory, paths, images, selectedImageId, toast]);
+    toast({ title: "Nothing to Undo", description: "Canvas is empty or at earliest state." });
+  }, [pathHistory, paths, images, toast]);
   
   const canUndo = pathHistory.length > 0 || images.length > 0;
 
@@ -522,12 +516,18 @@ export default function AppClient() {
   };
 
   const toggleFillMode = useCallback(() => {
-    setIsFillModeActive(prev => !prev);
-    if (!isFillModeActive) { 
-      setSelectedImageId(null); 
-      setCurrentPath([]); 
-    }
-  }, [isFillModeActive]);
+    setIsFillModeActive(prev => {
+        const nextState = !prev;
+        if (nextState) { // Entering fill mode
+            setSelectedImageId(null); 
+            setCurrentPath([]); 
+            toast({ title: "Fill Mode Activated", description: "Click on shapes to fill them.", duration: 2000 });
+        } else { // Exiting fill mode
+            toast({ title: "Fill Mode Deactivated", description: "Drawing mode re-enabled.", duration: 2000 });
+        }
+        return nextState;
+    });
+  }, [toast]);
 
 
   const togglePreview = () => setIsPreviewVisible(prev => !prev);
@@ -597,7 +597,7 @@ export default function AppClient() {
                             sectionContent = <ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} />;
                             break;
                         case 'tools':
-                            sectionContent = <DrawingToolControl tools={tools} onToolsChange={setTools} />;
+                            sectionContent = <DrawingToolControl tools={tools} onToolsChange={setTools} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} />;
                             break;
                         case 'image':
                             sectionContent = <ImageUploadControl onImageUpload={handleImageUpload} {...commonProps} />;
@@ -648,7 +648,7 @@ export default function AppClient() {
             sectionContent = <div key="shapes" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ShapeControl shapes={shapeSettings} onShapesChange={setShapeSettings} /></div>;
             break;
           case 'tools':
-            sectionContent = <div key="tools" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><DrawingToolControl tools={tools} onToolsChange={setTools} /></div>;
+            sectionContent = <div key="tools" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><DrawingToolControl tools={tools} onToolsChange={setTools} isFillModeActive={isFillModeActive} onToggleFillMode={toggleFillMode} /></div>;
             break;
           case 'image':
             sectionContent = <div key="image" className="space-y-2"><h3 className="text-base font-medium flex items-center gap-2"><sectionConfig.icon className="h-4 w-4" />{sectionConfig.label}</h3><ImageUploadControl onImageUpload={handleImageUpload} {...commonProps} /></div>;

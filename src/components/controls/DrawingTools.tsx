@@ -5,13 +5,17 @@ import type { DrawingTools } from "@/components/AppClient";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
+import { PaintBucket } from "lucide-react";
 
 interface DrawingToolControlProps {
   tools: DrawingTools;
   onToolsChange: (settings: DrawingTools) => void;
+  isFillModeActive: boolean;
+  onToggleFillMode: () => void;
 }
 
-export function DrawingToolControl({ tools, onToolsChange }: DrawingToolControlProps) {
+export function DrawingToolControl({ tools, onToolsChange, isFillModeActive, onToggleFillMode }: DrawingToolControlProps) {
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold">Drawing Tools</h2>
@@ -37,10 +41,21 @@ export function DrawingToolControl({ tools, onToolsChange }: DrawingToolControlP
       </div>
 
       <div className="space-y-3">
-        <Label htmlFor="fillColor" className="text-sm">Fill Color</Label>
+        <div className="flex items-center justify-between">
+            <Label htmlFor="fillColorInput" className="text-sm">Fill Color</Label>
+            <Button
+                variant={isFillModeActive ? "secondary" : "outline"}
+                size="sm"
+                onClick={onToggleFillMode}
+                className="px-2.5" // Adjusted padding for better fit
+            >
+                <PaintBucket className="mr-1.5 h-4 w-4" />
+                {isFillModeActive ? "Fill Active" : "Activate Fill"}
+            </Button>
+        </div>
         <div className="flex items-center gap-2">
           <Input
-            id="fillColor"
+            id="fillColorInput"
             type="color"
             value={tools.fillColor}
             onChange={(e) => onToolsChange({ ...tools, fillColor: e.target.value })}
@@ -54,7 +69,11 @@ export function DrawingToolControl({ tools, onToolsChange }: DrawingToolControlP
             aria-label="Fill color hex value"
           />
         </div>
-        <p className="text-xs text-muted-foreground">Select color to fill shapes. Activate Fill Tool and click a shape.</p>
+        <p className="text-xs text-muted-foreground">
+            {isFillModeActive
+                ? "Fill mode is active. Click shapes on canvas to fill with this color."
+                : "Activate fill mode (button above) to use this color for filling shapes."}
+        </p>
       </div>
 
       <div className="space-y-3">

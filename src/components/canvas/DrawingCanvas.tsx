@@ -318,6 +318,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             points: finalPathPoints,
             color: drawingTools.strokeColor,
             lineWidth: drawingTools.lineWidth,
+            fillColor: shapeSettings.currentShape !== 'freehand' && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark' ? drawingTools.fillColor : undefined, // Tentative auto-fill for closed shapes
           });
        }
       onCurrentPathChange([]);
@@ -414,9 +415,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                 ctx.scale(scaleX, scaleY);
                 ctx.drawImage(htmlImg, 0, 0, width, height);
                 
-                if (isSelected && i === 0 && !mirror.mx && !mirror.my) {
+                if (isSelected && i === 0 && !mirror.mx && !mirror.my) { // Highlight only the original selected image
                     ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
-                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1;
+                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0 /* Replace with actual scale phase if needed */) * animationSettings.scaleIntensity) : 1;
                     ctx.lineWidth = 2 / globalScale; 
                     ctx.setLineDash([4 / globalScale, 2 / globalScale]);
                     ctx.strokeRect(0 - 2, 0 - 2, width + 4, height + 4);
@@ -574,7 +575,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
           if (tempPreviewPath.isFixedShape) {
               const drawFunc = isShapePreviewLine ? drawTemporaryShapeLine : drawSinglePath;
-              drawFunc(ctx, tempPreviewPath.points, tempPreviewPath.color, tempPreviewPath.lineWidth, previewPulseOffset, null);
+              drawFunc(ctx, tempPreviewPath.points, tempPreviewPath.color, tempPreviewPath.lineWidth, previewPulseOffset, tempPreviewPath.fillColor);
           } else {
               drawSymmetricPath(ctx, canvas, tempPreviewPath, symmetrySettings, isShapePreviewLine, previewPulseOffset);
           }
