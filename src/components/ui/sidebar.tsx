@@ -172,6 +172,9 @@ const Sidebar = React.forwardRef<
       collapsible = "offcanvas",
       className,
       children,
+ open, // Destructure to exclude from props spread
+ onOpenChange, // Destructure to exclude from props spread
+ onCollapseChange, // Destructure to exclude from props spread
       ...props
     },
     ref

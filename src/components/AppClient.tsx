@@ -4,7 +4,6 @@
 import type { Point, Path, CanvasImage, ShapeType, CanvasText } from "@/types/drawing";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { DrawingCanvas } from '@/components/canvas/DrawingCanvas';
 import { SymmetryControl } from '@/components/controls/SymmetrySettings';
 import { AnimationControl } from '@/components/controls/AnimationSettings';
 import { DrawingToolControl } from '@/components/controls/DrawingTools';
@@ -12,6 +11,7 @@ import { ShapeControl } from '@/components/controls/ShapeSettings';
 import { ActionToolbar } from '@/components/controls/ActionToolbar';
 import { PreviewCanvas } from '@/components/canvas/PreviewCanvas';
 import { ImageUploadControl } from '@/components/controls/ImageUploadControl';
+import { DrawingCanvas } from './canvas/DrawingCanvas';
 
 import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -36,8 +36,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-
-import welcomeImageFromFile from '@/app/welcome.png';
 
 
 export interface SymmetrySettings {
@@ -714,7 +712,7 @@ export default function AppClient() {
 
     if (activeSections.has('all')) {
         return (
-            <Accordion type="multiple" className="w-full space-y-1" defaultValue={[]}>
+            <Accordion type="multiple" className="w-full space-y-1" defaultValue={isMobile ? [] : controlPanelSections.map(s => s.name)}>
                 {controlPanelSections.map(sectionConfig => {
                     let sectionContent: JSX.Element | null = null;
                     switch (sectionConfig.name) {
@@ -823,17 +821,11 @@ export default function AppClient() {
               </DialogTitle>
               <DialogDescription>
                 Unleash your creativity with symmetric and animated art. Explore the controls in the sidebar and start drawing! All control sections are available, initially collapsed for a clean start.
+                 For a quick overview, check out the video below or visit the "How To" page.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex justify-center items-center my-4">
-                <Image 
-                    src={welcomeImageFromFile}
-                    alt="Symmetric Art Example" 
-                    width={300} 
-                    height={200} 
-                    className="rounded-md shadow-lg"
-                    data-ai-hint="abstract colorful"
-                />
+             <div className="flex justify-center items-center my-4 aspect-video w-full max-w-sm mx-auto">
+                <Image src="/welcome.png" alt="HegArt Welcome Image" width={400} height={225} className="rounded-md shadow-lg w-full h-full object-cover" />
             </div>
             <DialogFooter>
               <Button onClick={() => setShowWelcomeDialog(false)}>Get Started!</Button>

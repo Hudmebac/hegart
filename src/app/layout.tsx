@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"; // Added import for Button
 export const metadata: Metadata = {
   title: '#HegArt - Symmetric Art Generator', 
   icons: {
-    icon: "https://heggie.netlify.app/favicon.ico"
+    icon: "/favicon.png"
  },
   description: 'Create beautiful symmetric and animated art.',
 };
@@ -20,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${montserrat.variable} font-montserrat antialiased`}>
+      <body className={`${montserrat.variable} font-montserrat antialiased`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
