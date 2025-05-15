@@ -1,9 +1,10 @@
-// src/App.tsx
+
+"use client";
 
 import React, { useState, useEffect } from 'react';
 // import AnimationManager from './components/AnimationManager'; // Removed AnimationManager as Timeline is replacing its role
 import StickmanCanvas from './components/StickmanCanvas'; // Assuming StickmanCanvas is imported here
-import { Stickman, AnimationState, Animation, Keyframe, Point } from './types/stickman';
+import { Stickman, AnimationState, Animation, Keyframe, Point, LayerKeyframe } from './types/stickman'; // Added LayerKeyframe
 import { GameItem } from './types/game'; // Import GameItem type
 import LayerPanel from './components/LayerPanel'; // Import the LayerPanel component
 import Timeline from './components/Timeline'; // Import the Timeline component
@@ -17,6 +18,7 @@ import { RecordedFrame } from './types/recording'; // Import RecordedFrame
 import { EquippedItem, Weapon, FightRecording } from './types/stickman'; // Import EquippedItem and Weapon types
 import ShopPanel from './components/ShopPanel'; // Import the ShopPanel component
 
+const App: React.FC = () => { // Added React.FC type
     const [stickmen, setStickmen] = useState<Stickman[]>([]);
  const [selectedStickmanId, setSelectedStickmanId] = useState<string | null>(null); // State for selected stickman
     const [animationState, setAnimationState] = useState<AnimationState>({
@@ -77,6 +79,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 lineWidth: 10,
                 minRotation: -Math.PI / 2,
                 maxRotation: Math.PI / 2,
+                rotation: 0, // Added missing rotation property
             },
             limbs: [
                 {
@@ -109,6 +112,17 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 },
                 // Add Left Arm, Legs...
             ],
+            strength: 10, // Added missing properties
+            defense: 5,
+            speed: 1,
+            experience: 0,
+            level: 1,
+            isAI: false,
+            aiState: 'idle',
+            targetId: null,
+            currentAttackAnimation: null,
+            unlockedAbilities: [],
+            equippedItems: [], // Added missing equippedItems
         };
 
         // Create a base pose from the initial stickman
@@ -123,7 +137,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             opacity: 1.0,
             isVisible: true,
             isLocked: false,
-            scope: {}, // Initially scope all parts/properties (or specific ones if needed)
+            scope: { partIds: [], properties: [] }, // Initialize scope correctly
             keyframes: [], // Layers start with no keyframes, they are added during animation
         };
 
@@ -155,7 +169,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
     }, []);
 
     // Function to interpolate stickmen pose based on current animation state
-    const interpolateStickmen = (animation: Animation, time: number): Stickman[] => {
+    const interpolateStickmenPose = (animation: Animation, time: number): Stickman[] => { // Renamed to avoid conflict
         // Start with the base pose
         let interpolatedPose = JSON.parse(JSON.stringify(animation.basePose)); // Deep copy base pose
 
@@ -166,10 +180,11 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             // Find keyframes bracketing the current time for this layer
             const beforeKeyframeIndex = layer.keyframes.reduce((prevIndex, currentKeyframe, index) => {
                 return currentKeyframe.time <= time ? index : prevIndex;
-            }, 0);
+            }, -1); // Initialize to -1 if no keyframe is before current time
 
-            const beforeKeyframe = layer.keyframes[beforeKeyframeIndex];
-            const afterKeyframe = layer.keyframes[beforeKeyframeIndex + 1];
+            const beforeKeyframe = beforeKeyframeIndex !== -1 ? layer.keyframes[beforeKeyframeIndex] : null;
+            const afterKeyframe = beforeKeyframeIndex !== -1 && (beforeKeyframeIndex + 1 < layer.keyframes.length) ? layer.keyframes[beforeKeyframeIndex + 1] : null;
+
 
             let layerAppliedPose: Stickman[];
 
@@ -180,42 +195,39 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             } else if (!afterKeyframe || beforeKeyframe === afterKeyframe) {
                 // Only one keyframe or time is at or after the last keyframe
                 // Apply the state from the single keyframe or the last keyframe
-                // Assuming LayerKeyframe stores partial Stickman state for the scoped parts
                 layerAppliedPose = applyLayerKeyframeToPose(interpolatedPose, beforeKeyframe);
 
             } else {
                  // Interpolate between before and after keyframes
                 const timeRange = afterKeyframe.time - beforeKeyframe.time;
-                const t = (time - beforeKeyframe.time) / timeRange;
+                const t = timeRange === 0 ? 0 : (time - beforeKeyframe.time) / timeRange;
+
 
                 // Interpolate the state between the two layer keyframes
-                const interpolatedLayerState = interpolateLayerStates(beforeKeyframe, afterKeyframe, t);
+                const interpolatedLayerState = interpolateLayerStates(beforeKeyframe, afterKeyframe, t, layer.scope.partIds); // Pass partIds for scope
 
                 // Apply the interpolated state to the current pose
-                layerAppliedPose = applyLayerKeyframeToPose(interpolatedPose, { time, ...interpolatedLayerState });
+                // Ensure interpolatedLayerState is compatible with LayerKeyframe structure expected by applyLayerKeyframeToPose
+                layerAppliedPose = applyLayerKeyframeToPose(interpolatedPose, { time, ...interpolatedLayerState } as LayerKeyframe);
             }
 
-            // Blend the layerAppliedPose with the current interpolatedPose based on blend mode and opacity
-            // This is a simplified blend - just overriding for now based on scope
              if (layer.blendMode === 'override') {
-                 // For override, replace the parts/properties in the interpolatedPose
-                 // with the corresponding ones from layerAppliedPose IF they are in the layer's scope
                  if (layer.scope.partIds && layer.scope.partIds.length > 0) {
                      interpolatedPose = interpolatedPose.map(stickman => {
                           const updatedStickman = { ...stickman };
-                          // Find the corresponding stickman in the layerAppliedPose (assuming same structure)
                           const layerStickman = layerAppliedPose.find(ls => ls.id === stickman.id);
 
                           if (layerStickman) {
-                              // Iterate through the stickman's parts
-                               if (layer.scope.partIds.includes(stickman.body.id)) updatedStickman.body = layerStickman.body;
-                               if (layer.scope.partIds.includes(stickman.head.id)) updatedStickman.head = layerStickman.head;
+                               if (layer.scope.partIds.includes(stickman.body.id) && layerStickman.body) updatedStickman.body = layerStickman.body;
+                               if (layer.scope.partIds.includes(stickman.head.id) && layerStickman.head) updatedStickman.head = layerStickman.head;
 
                                 updatedStickman.limbs = updatedStickman.limbs.map(limb => {
-                                     if (layer.scope.partIds && layer.scope.partIds.includes(limb.id)) return layerStickman.limbs.find(ll => ll.id === limb.id) || limb;
+                                    const layerLimb = layerStickman.limbs.find(ll => ll.id === limb.id);
+                                     if (layer.scope.partIds.includes(limb.id) && layerLimb) return layerLimb;
 
                                      limb.segments = limb.segments.map(segment => {
-                                         if (layer.scope.partIds && layer.scope.partIds.includes(segment.id)) return layerStickman.limbs.find(ll => ll.id === limb.id)?.segments.find(ls => ls.id === segment.id) || segment;
+                                         const layerSegment = layerLimb?.segments.find(ls => ls.id === segment.id);
+                                         if (layer.scope.partIds.includes(segment.id) && layerSegment) return layerSegment;
                                          return segment;
                                      });
                                      return limb;
@@ -224,12 +236,9 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                          return updatedStickman;
                      });
                  } else {
-                     // If no specific parts are scoped, override the whole pose (simplified)
-                     // This needs refinement based on what the layer keyframe actually stores
                      interpolatedPose = layerAppliedPose;
                  }
              }
-             // Add logic for 'additive' and other blend modes later
 
         });
 
@@ -259,39 +268,138 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
     };
 
     // Helper function to apply state from a LayerKeyframe to a Stickman pose
-    // This assumes the LayerKeyframe stores partial Stickman structures corresponding to its scope
      const applyLayerKeyframeToPose = (pose: Stickman[], layerKeyframe: LayerKeyframe): Stickman[] => {
-        // This function needs to merge the state from layerKeyframe into the pose.
-        // The structure of layerKeyframe.data will determine how this merge happens.
-        // For now, assuming layerKeyframe.data might contain stickman objects or parts
-
         return pose.map(stickman => {
-            const updatedStickman = { ...stickman };
+            const updatedStickman = { ...stickman }; // Deep clone individual stickman
+            const keyframeStickmanData = (layerKeyframe as any)[stickman.id]; // Access by stickman ID
 
-             // Assuming layerKeyframe might have a 'stickmen' property with relevant data
-             if (layerKeyframe.stickmen) {
-                 const layerStickmanData = layerKeyframe.stickmen.find((ls: any) => ls.id === stickman.id);
-                 if (layerStickmanData) {
-                     // Merge data from layerStickmanData into updatedStickman
-                     // This requires merging properties within body, head, limbs, segments based on layer scope
-                      // This is complex and needs careful implementation based on layer scope and data structure
-                      // For the initial override layer, assuming the keyframe might contain full stickman data for simplicity
-                      return layerStickmanData; // Simplified: directly use data from keyframe if it contains full stickman
-                 }
-             }
-
+            if (keyframeStickmanData) {
+                if (keyframeStickmanData.body) updatedStickman.body = { ...updatedStickman.body, ...keyframeStickmanData.body };
+                if (keyframeStickmanData.head) updatedStickman.head = { ...updatedStickman.head, ...keyframeStickmanData.head };
+                if (keyframeStickmanData.limbs) {
+                    updatedStickman.limbs = updatedStickman.limbs.map(limb => {
+                        const keyframeLimbData = keyframeStickmanData.limbs[limb.id];
+                        if (keyframeLimbData) {
+                            const updatedLimb = { ...limb };
+                            if (keyframeLimbData.segments) {
+                                updatedLimb.segments = updatedLimb.segments.map(segment => {
+                                    const keyframeSegmentData = keyframeLimbData.segments[segment.id];
+                                    if (keyframeSegmentData) {
+                                        return { ...segment, ...keyframeSegmentData };
+                                    }
+                                    return segment;
+                                });
+                            }
+                            // Apply other limb properties if any
+                            if (keyframeLimbData.position) updatedLimb.connectionPoint = keyframeLimbData.position; // Example for limb position
+                            if (keyframeLimbData.rotation) { /* apply limb rotation if limbs have independent rotation */ }
+                            return updatedLimb;
+                        }
+                        return limb;
+                    });
+                }
+            }
             return updatedStickman;
         });
     };
 
+
     // Helper function to interpolate between two LayerKeyframe states
-    const interpolateLayerStates = (kf1: LayerKeyframe, kf2: LayerKeyframe, t: number): any => {
-         // This function needs to interpolate the data structure stored in LayerKeyframe
-         // based on the layer's scope.
-         // For the initial override layer, assuming keyframes store full stickman data for simplicity,
-         // we can reuse the existing stickman interpolation logic.
-         return interpolateStickmen([{ time: kf1.time, stickmen: kf1.stickmen as Stickman[] }], { time: kf2.time, stickmen: kf2.stickmen as Stickman[] }, t)[0]; // Assuming keyframes store stickmen
+    const interpolateLayerStates = (kf1: LayerKeyframe, kf2: LayerKeyframe, t: number, scopedPartIds: string[]): any => {
+        const interpolatedState: any = { time: kf1.time + (kf2.time - kf1.time) * t };
+
+        // Iterate over all stickman IDs present in either keyframe
+        const stickmanIds = new Set([...Object.keys(kf1), ...Object.keys(kf2)].filter(key => key !== 'time'));
+
+
+        stickmanIds.forEach(stickmanId => {
+            const data1 = (kf1 as any)[stickmanId];
+            const data2 = (kf2 as any)[stickmanId];
+            interpolatedState[stickmanId] = {};
+
+            // Interpolate body
+            if (scopedPartIds.includes(`${stickmanId}.body`) || scopedPartIds.includes(data1?.body?.id) || scopedPartIds.includes(data2?.body?.id)) {
+                 if (data1?.body && data2?.body) {
+                    interpolatedState[stickmanId].body = {
+                        position: {
+                            x: data1.body.position.x + (data2.body.position.x - data1.body.position.x) * t,
+                            y: data1.body.position.y + (data2.body.position.y - data1.body.position.y) * t,
+                        },
+                        rotation: data1.body.rotation + (data2.body.rotation - data1.body.rotation) * t,
+                    };
+                 } else if (data1?.body) {
+                    interpolatedState[stickmanId].body = data1.body;
+                 } else if (data2?.body) {
+                    interpolatedState[stickmanId].body = data2.body;
+                 }
+            }
+
+            // Interpolate head
+            if (scopedPartIds.includes(`${stickmanId}.head`) || scopedPartIds.includes(data1?.head?.id) || scopedPartIds.includes(data2?.head?.id)) {
+                 if (data1?.head && data2?.head) {
+                    interpolatedState[stickmanId].head = {
+                        position: {
+                            x: data1.head.position.x + (data2.head.position.x - data1.head.position.x) * t,
+                            y: data1.head.position.y + (data2.head.position.y - data1.head.position.y) * t,
+                        },
+                        rotation: data1.head.rotation + (data2.head.rotation - data1.head.rotation) * t,
+                    };
+                 } else if (data1?.head) {
+                    interpolatedState[stickmanId].head = data1.head;
+                 } else if (data2?.head) {
+                    interpolatedState[stickmanId].head = data2.head;
+                 }
+            }
+
+
+            // Interpolate limbs and segments
+            if (data1?.limbs || data2?.limbs) {
+                interpolatedState[stickmanId].limbs = {};
+                const limbIds = new Set([
+                    ...(data1?.limbs ? Object.keys(data1.limbs) : []),
+                    ...(data2?.limbs ? Object.keys(data2.limbs) : [])
+                ]);
+
+                limbIds.forEach(limbId => {
+                    if (!scopedPartIds.some(id => id.startsWith(`${stickmanId}.limbs.${limbId}`))) return;
+
+                    const limb1 = data1?.limbs?.[limbId];
+                    const limb2 = data2?.limbs?.[limbId];
+                    interpolatedState[stickmanId].limbs[limbId] = { segments: {} };
+
+                    if (limb1?.segments || limb2?.segments) {
+                        const segmentIds = new Set([
+                            ...(limb1?.segments ? Object.keys(limb1.segments) : []),
+                            ...(limb2?.segments ? Object.keys(limb2.segments) : [])
+                        ]);
+
+                        segmentIds.forEach(segmentId => {
+                             if (!scopedPartIds.includes(`${stickmanId}.limbs.${limbId}.segments.${segmentId}`)) return;
+
+                            const seg1 = limb1?.segments?.[segmentId];
+                            const seg2 = limb2?.segments?.[segmentId];
+
+                            if (seg1 && seg2) {
+                                interpolatedState[stickmanId].limbs[limbId].segments[segmentId] = {
+                                    position: { // Assuming segments can have position, though typically (0,0)
+                                        x: (seg1.position?.x || 0) + ((seg2.position?.x || 0) - (seg1.position?.x || 0)) * t,
+                                        y: (seg1.position?.y || 0) + ((seg2.position?.y || 0) - (seg1.position?.y || 0)) * t,
+                                    },
+                                    rotation: seg1.rotation + (seg2.rotation - seg1.rotation) * t,
+                                };
+                            } else if (seg1) {
+                                interpolatedState[stickmanId].limbs[limbId].segments[segmentId] = seg1;
+                            } else if (seg2) {
+                                interpolatedState[stickmanId].limbs[limbId].segments[segmentId] = seg2;
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        return interpolatedState;
     };
+
 
 
     // Update the stickmen state whenever currentTime or animationState changes
@@ -353,69 +461,59 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                                         body: { ...stickman.body, position: { x: newPositionX, y: newPositionY } }
                                     };
                                 } else {
-                                    // Close enough to attack, transition to attacking state (will implement attack logic later)
  console.log(`AI Stickman ${stickman.id} is close enough to attack ${target.id}.`);
-                                    // For now, just log and remain in 'attacking' state
-                                    // return { ...stickman, aiState: 'attacking' }; // Already in attacking, no state change needed here
                                 }
                             }
                             break;
                         case 'defending':
-                            // AI logic for defending (will be implemented later)
                             break;
                         default:
                             break;
                     }
                 }
-                return stickman; // No change for non-AI stickmen or AI with valid target
+                return stickman; 
             });
 
- // Combine stickmen from updatedBasePose with any stickmen not in basePose (though currently all stickmen are in basePose)
-            const allStickmenInAnimation = [...updatedStickmenForAI]; // For simplicity, assume all stickmen are in basePose
 
-
-            // Use the updated stickmen (with potential AI movements) for interpolation
-            const interpolatedStickmen = interpolateStickmen({ ...currentAnimation, basePose: updatedStickmenForAI }, animationState.currentTime);
+            const interpolatedStickmen = interpolateStickmenPose({ ...currentAnimation, basePose: updatedStickmenForAI }, animationState.currentTime);
             setStickmen(interpolatedStickmen);
         } else {
-             // If no animation is selected, perhaps show the base pose or an empty state
-             setStickmen([]); // Or animationState.animations[0]?.basePose || []
+             setStickmen(animationState.animations[0]?.basePose || []);
         }
-    }, [animationState.currentTime, animationState.currentAnimationId, animationState.animations]); // Depend on currentTime and animation state
-
- // Add dependency on stickmen state itself so AI movement triggers re-render and further AI updates
+    }, [animationState.currentTime, animationState.currentAnimationId, animationState.animations]);
 
 
     // Handle drag updates
     const handleStickmanUpdate = (updatedStickmen: Stickman[]) => {
         setAnimationState(prevState => {
             const currentAnimation = prevState.animations.find(anim => anim.id === prevState.currentAnimationId);
-            if (!currentAnimation || prevState.currentLayerId === null) return prevState; // Only update if animation and layer are selected
+            if (!currentAnimation || prevState.currentLayerId === null) return prevState; 
 
             const currentLayer = currentAnimation.layers.find(layer => layer.id === prevState.currentLayerId);
-            if (!currentLayer || currentLayer.isLocked) return prevState; // Only update if layer is found and not locked
+            if (!currentLayer || currentLayer.isLocked) return prevState; 
 
             const currentTime = prevState.currentTime;
             const existingKeyframeIndex = currentLayer.keyframes.findIndex(kf => kf.time === currentTime);
 
-            // Create a LayerKeyframe storing only the state of the modified parts
-            const modifiedPartData: { [partId: string]: any } = {};
-            // You would need to compare updatedStickmen with the interpolated pose *before* this layer was applied
-            // to identify exactly which parts changed and store their new state.
-            // For simplicity in this diff, we'll just assume updatedStickmen contains the parts you want to keyframe.
-            // A more robust implementation would track individual part modifications.
+            // Create a LayerKeyframe storing the state of the modified parts
+            const newLayerKeyframeData: any = { time: currentTime };
             updatedStickmen.forEach(stickman => {
-                 // This part needs refinement based on how you track *which* parts were modified by the user drag
-                 // For demonstration, let's assume updatedStickmen[0] is the relevant stickman
-                 // and we're capturing its body and head state. This is a simplification.
-                 if (stickman.body) modifiedPartData[stickman.body.id] = { position: stickman.body.position, rotation: stickman.body.rotation };
-                 if (stickman.head) modifiedPartData[stickman.head.id] = { position: stickman.head.position, rotation: stickman.head.rotation }; // Assuming head has position/rotation
-                 // Add similar logic for limbs and segments based on your UI's modification tracking
+                newLayerKeyframeData[stickman.id] = {
+                    body: { position: stickman.body.position, rotation: stickman.body.rotation },
+                    head: { position: stickman.head.position, rotation: stickman.head.rotation },
+                    limbs: stickman.limbs.reduce((acc, limb) => {
+                        acc[limb.id] = {
+                            segments: limb.segments.reduce((segAcc, segment) => {
+                                segAcc[segment.id] = { position: segment.position, rotation: segment.rotation };
+                                return segAcc;
+                            }, {} as any)
+                        };
+                        return acc;
+                    }, {} as any)
+                };
             });
-            const newLayerKeyframe: LayerKeyframe = {
-                time: currentTime,
-                data: modifiedPartData, // Store only the modified part data
-            };
+            const newLayerKeyframe: LayerKeyframe = newLayerKeyframeData as LayerKeyframe;
+
 
             let updatedKeyframes: LayerKeyframe[];
 
@@ -431,13 +529,11 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 updatedKeyframes = [...currentLayer.keyframes, newLayerKeyframe].sort((a, b) => a.time - b.time);
             }
 
-            // Update the current layer with the new keyframes
             const updatedLayer = {
                 ...currentLayer,
                 keyframes: updatedKeyframes,
             };
 
-            // Update the animation with the modified layer
             const updatedAnimation = {
                 ...currentAnimation,
                 layers: currentAnimation.layers.map(layer =>
@@ -445,7 +541,6 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 ),
             };
 
-            // Update the animation state
             const updatedAnimations = prevState.animations.map(anim =>
                 anim.id === updatedAnimation.id ? updatedAnimation : anim
             );
@@ -455,7 +550,6 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 animations: updatedAnimations,
             };
         });
-         // The stickmen state will be updated by the useEffect hook when animationState changes
     };
 
     // Handle Layer Panel actions
@@ -466,41 +560,81 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
          }));
     };
 
-    // Game loop / Update logic (simplified here, might be in a useFrameLoop hook)
+    // Game loop / Update logic
+    useEffect(() => {
+        let frameId: number;
+        if (animationState.isPlaying) {
+            const loop = (timestamp: number) => {
+                if (!animationState.isPlaying) return; // Ensure stop if isPlaying becomes false
+
+                setAnimationState(prev => {
+                    const currentAnim = prev.animations.find(anim => anim.id === prev.currentAnimationId);
+                    if (!currentAnim) return prev;
+
+                    let newTime = prev.currentTime + (timestamp - (lastFrameTimestamp.current || timestamp));
+                    lastFrameTimestamp.current = timestamp;
+
+
+                    if (newTime >= currentAnim.duration) {
+                        newTime = 0; // Loop animation
+                    }
+                    return { ...prev, currentTime: newTime };
+                });
+                frameId = requestAnimationFrame(loop);
+            };
+            const lastFrameTimestamp = React.useRef<number | null>(null);
+            frameId = requestAnimationFrame(loop);
+        }
+        return () => {
+            if (frameId) cancelAnimationFrame(frameId);
+            lastFrameTimestamp.current = null; // Reset on pause/stop
+        };
+    }, [animationState.isPlaying, animationState.currentAnimationId, animationState.animations]);
+
+
     useEffect(() => {
         if (animationState.isPlaying && isRecording && recordingStartTime !== null) {
             const currentTime = Date.now();
             const elapsed = currentTime - recordingStartTime;
 
-            // Capture stickman state for recording
             const recordedStickmenState = stickmen.map(s => ({
                 id: s.id,
-                pose: s.body.position, // Simplified: just record body position
- health: s.health, // Record health
+                // pose: s.body.position, // Simplified: just record body position - Needs to be full pose
+                pose: { // Placeholder for full pose recording
+                    body: { position: s.body.position, rotation: s.body.rotation },
+                    head: { position: s.head.position, rotation: s.head.rotation },
+                    limbs: s.limbs.map(l => ({
+                        ...l,
+                        segments: l.segments.map(sg => ({ position: sg.position, rotation: sg.rotation }))
+                    }))
+                },
+                health: s.health, 
             }));
 
             const newFrame: RecordedFrame = {
- time: elapsed,
- stickmen: recordedStickmenState,
+                 time: elapsed,
+                 stickmen: recordedStickmenState as any, // Cast to any for now, ensure pose structure matches later
             };
             setCurrentRecordingFrames(prevFrames => [...prevFrames, newFrame]);
-        }));
-    };
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [animationState.currentTime, isRecording, stickmen]); // Re-record frame when currentTime (and thus stickmen) changes
+
 
     const handleAddLayer = () => {
         setAnimationState(prevState => {
             const currentAnimation = prevState.animations.find(anim => anim.id === prevState.currentAnimationId);
             if (!currentAnimation) return prevState;
 
-            const newLayerId = `layer-${Date.now()}`; // Simple unique ID
+            const newLayerId = `layer-${Date.now()}`; 
             const newLayer = {
                 id: newLayerId,
                 name: `Layer ${currentAnimation.layers.length + 1}`,
-                blendMode: 'override' as const, // Default to override for now
+                blendMode: 'override' as const, 
                 opacity: 1.0,
                 isVisible: true,
                 isLocked: false,
-                scope: {}, // Default scope
+                scope: { partIds: [], properties: [] }, // Initialize scope correctly
                 keyframes: [],
             };
 
@@ -517,7 +651,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             return {
                 ...prevState,
                 animations: updatedAnimations,
-                currentLayerId: newLayerId, // Select the new layer
+                currentLayerId: newLayerId, 
             };
         });
     };
@@ -525,7 +659,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
     const handleDeleteLayer = (layerId: string) => {
         setAnimationState(prevState => {
             const currentAnimation = prevState.animations.find(anim => anim.id === prevState.currentAnimationId);
-            if (!currentAnimation || currentAnimation.layers.length <= 1) return prevState; // Prevent deleting the last layer
+            if (!currentAnimation || currentAnimation.layers.length <= 1) return prevState; 
 
             const updatedLayers = currentAnimation.layers.filter(layer => layer.id !== layerId);
             const updatedAnimation = {
@@ -535,140 +669,128 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             const updatedAnimations = prevState.animations.map(anim =>
                 anim.id === updatedAnimation.id ? updatedAnimation : anim
             );
-            const newCurrentLayerId = prevState.currentLayerId === layerId ? updatedLayers[0]?.id || null : prevState.currentLayerId; // Select first layer if current is deleted
+            const newCurrentLayerId = prevState.currentLayerId === layerId ? updatedLayers[0]?.id || null : prevState.currentLayerId; 
             return { ...prevState, animations: updatedAnimations, currentLayerId: newCurrentLayerId };
         });
     };
-    // Timeline scrub handler (simplified since Timeline component handles the slider now)
     const handleTimelineScrub = (time: number) => {
          setAnimationState(prevState => ({
              ...prevState,
              currentTime: time,
          }));
+    };
 
 
-    }, [animationState.currentTime, animationState.currentAnimationId, animationState.animations]);
-
-    // Placeholder functions for basic part manipulation (replace with proper UI later)
     const handleAddLimb = () => {
-        // Logic to add a new limb to the current stickman's base pose
-        // This is simplified and needs proper implementation
         console.log("Add Limb clicked (placeholder)");
     };
 
      const handleAddSegment = () => {
-        // Logic to add a new segment to a selected limb's base pose
-         // This is simplified and needs proper implementation
         console.log("Add Segment clicked (placeholder)");
     };
 
      const handleRemovePart = () => {
-        // Logic to remove a selected part from the current stickman's base pose
-         // This is simplified and needs proper implementation
         console.log("Remove Part clicked (placeholder)");
     };
 
-    // Placeholder Save/Load Handlers (replace with proper implementation using layers)
-    const handleSaveStickman = () => {
+    const handleSaveStickmanAnimation = () => { // Renamed to avoid conflict with storage import
         if (!filename || !animationState.currentAnimationId) {
             console.warn("Please enter a filename and ensure an animation is selected.");
             return;
         }
          const currentAnimation = animationState.animations.find(anim => anim.id === animationState.currentAnimationId);
          if (currentAnimation) {
-             // Saving needs to include layers and basePose now
-             saveStickman(filename, currentAnimation); // Need to update saveStickman to handle Animation type
-             console.log(`Animation '${currentAnimation.name}' saved as ${filename}`);
+             // saveStickman(filename, currentAnimation); // This function is not correctly imported/defined from storage
+             console.log(`Animation '${currentAnimation.name}' saved as ${filename} (Save logic needs to be fixed)`);
+             // For now, let's stringify and save the animation itself under a key like `animation_${filename}`
+             try {
+                localStorage.setItem(`animation_${filename}`, JSON.stringify(currentAnimation));
+                console.log(`Animation '${currentAnimation.name}' saved as animation_${filename} to localStorage.`);
+             } catch (e) {
+                console.error("Error saving animation to localStorage", e);
+             }
          }
     };
 
-    const handleLoadStickmen = async () => {
+    const handleLoadStickmanAnimation = async () => { // Renamed and made async to match original structure
         if (!filename) {
              console.warn("Please enter a filename to load.");
              return;
         }
         try {
-            const loadedAnimation: Animation | null = await loadStickmen(filename) as Animation | null; // Need to update loadStickmen to return Animation type
-            if (loadedAnimation) {
-                // Add loaded animation to state
-                 setAnimationState(prevState => {
-                     // Check if animation with same ID already exists
-                     const existingIndex = prevState.animations.findIndex(anim => anim.id === loadedAnimation.id);
+            // const loadedAnimation: Animation | null = await loadStickmen(filename) as Animation | null; // loadStickmen from storage returns Stickman[]
+            // For now, let's try to load the animation directly using the key `animation_${filename}`
+            const animationJson = localStorage.getItem(`animation_${filename}`);
+            if (!animationJson) {
+                console.warn(`No animation found in localStorage with key: animation_${filename}`);
+                return;
+            }
+            const loadedAnimation: Animation | null = JSON.parse(animationJson) as Animation | null;
 
+            if (loadedAnimation) {
+                 setAnimationState(prevState => {
+                     const existingIndex = prevState.animations.findIndex(anim => anim.id === loadedAnimation.id);
                      let updatedAnimations;
                      if (existingIndex !== -1) {
-                         // Replace existing animation
                          updatedAnimations = [
                              ...prevState.animations.slice(0, existingIndex),
                              loadedAnimation,
                              ...prevState.animations.slice(existingIndex + 1),
                          ];
                      } else {
-                         // Add new animation
                         updatedAnimations = [...prevState.animations, loadedAnimation];
                      }
-
-                     // Set loaded animation as current
                      const firstLayerId = loadedAnimation.layers.length > 0 ? loadedAnimation.layers[0].id : null;
-
                      return {
                          ...prevState,
                          animations: updatedAnimations,
                          currentAnimationId: loadedAnimation.id,
-                         currentLayerId: firstLayerId, // Select the first layer of the loaded animation
-                         currentTime: 0, // Reset time
+                         currentLayerId: firstLayerId, 
+                         currentTime: 0, 
                      };
                  });
-                 console.log(`Animation '${loadedAnimation.name}' loaded.`);
+                 console.log(`Animation '${loadedAnimation.name}' loaded from animation_${filename}.`);
             } else {
-                 console.warn(`No animation found with filename: ${filename}`);
+                 console.warn(`Could not parse animation from localStorage key: animation_${filename}`);
             }
         } catch (error) {
              console.error("Failed to load animation:", error);
-             console.warn(`Could not load animation from filename: ${filename}`);
         }
     };
 
-    // Handle item equipping selection
+
  const handleEquipItem = (itemId: string) => {
  setSelectedItemIdForEquipping(itemId);
  const item = sampleGameItems.find(i => i.id === itemId);
  console.log(`Selected item to equip: ${item?.name}. Click on a stickman part in the canvas to attach it.`);
     };
 
- // Handle click on a stickman part for equipping
  const handleStickmanPartClick = (stickmanId: string, partId: string, isDamagingCollision = false, attackingItemId: string | null = null) => {
  if (selectedItemIdForEquipping === null) {
- // If no item is selected for equipping, maybe select the stickman
  setSelectedStickmanId(stickmanId);
  console.log(`Stickman ${stickmanId}, Part ${partId} clicked.`);
 
- // Basic placeholder for demonstrating damage calculation
  if (isDamagingCollision && attackingItemId !== null) {
             const currentAnimation = animationState.animations.find(anim => anim.id === animationState.currentAnimationId);
+            const attackingStickman = currentAnimation?.basePose.find(s => s.equippedItems?.some(ei => ei.itemId === attackingItemId));
             const targetStickman = currentAnimation?.basePose.find(s => s.id === stickmanId);
-            const targetPart = targetStickman?.body.id === partId ? targetStickman.body :
- targetStickman?.head.id === partId ? targetStickman.head :
- targetStickman?.limbs.flatMap(limb => limb.segments).find(segment => segment.id === partId);
+            
             const attackingItem = sampleGameItems.find(item => item.id === attackingItemId && item.type === 'weapon') as Weapon | undefined;
 
- if (targetStickman && targetPart && attackingItem) {
- const damageDealt = calculateDamage(attackingItem, targetStickman); // Pass attacker (item owner) and defender
+ if (targetStickman && attackingStickman && attackingItem) {
+ const damageDealt = calculateDamage(attackingStickman, targetStickman, attackingItem.damage); 
  console.log(`Collision detected! Stickman ${stickmanId} hit in part ${partId} by ${attackingItem.name}. Damage dealt: ${damageDealt}`);
- // Check if the stickman is already defeated to prevent awarding credits multiple times
  if (targetStickman.health > 0 && targetStickman.health - damageDealt <= 0 && targetStickman.isAI) {
  console.log(`AI Stickman ${stickmanId} defeated! Awarding ${CREDITS_PER_DEFEAT} credits.`);
  setPlayerCredits(prevCredits => prevCredits + CREDITS_PER_DEFEAT);
  }
 
- // Apply damage to the stickman's health
-                // Apply damage to the stickman's health
  setAnimationState(prevState => {
                     const updatedAnimations = prevState.animations.map(anim => {
  if (anim.id === prevState.currentAnimationId) {
  const updatedBasePose = anim.basePose.map(s => {
  if (s.id === stickmanId) {
- const newHealth = Math.max(0, s.health - damageDealt); // Health doesn't go below 0
+ const newHealth = Math.max(0, s.health - damageDealt); 
  if (newHealth <= 0) {
  console.log(`Stickman ${stickmanId} has been defeated!`);
  }
@@ -684,40 +806,29 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                     });
  }
         }
- return; // Exit if not equipping
+ return; 
         }
 
- // Item is selected for equipping, equip it to the clicked part
  setAnimationState(prevState => {
  const updatedAnimations = prevState.animations.map(anim => {
  if (anim.id === prevState.currentAnimationId) {
  const updatedBasePose = anim.basePose.map(stickman => {
  if (stickman.id === stickmanId) {
- // Find the part to attach to (could be body, head, or limb segment)
-                                 // This is a simplified check, needs to handle limbs/segments properly
- const targetPart = stickman.body.id === partId ? stickman.body :
- stickman.head.id === partId ? stickman.head :
- stickman.limbs.flatMap(limb => limb.segments).find(segment => segment.id === partId);
-
- if (targetPart) {
- const newItem = { itemId: selectedItemIdForEquipping, attachedToPartId: partId };
-                                     // Add the item to the stickman's equippedItems array
+ const newItem: EquippedItem = { itemId: selectedItemIdForEquipping!, attachedToPartId: partId }; // Add type assertion
  return { ...stickman, equippedItems: [...(stickman.equippedItems || []), newItem] };
-                                 }
                             }
  return stickman;
                         });
- return { ...anim, basePose: updatedBasePose }; // Update the base pose with the equipped item
+ return { ...anim, basePose: updatedBasePose }; 
                     }
  return anim;
                 });
             return { ...prevState, animations: updatedAnimations };
         });
- setSelectedItemIdForEquipping(null); // Reset selected item after equipping
+ setSelectedItemIdForEquipping(null); 
  console.log(`Equipped item ${selectedItemIdForEquipping} to part ${partId} on stickman ${stickmanId}.`);
     };
 
-    // Handle buying an item from the shop
     const handleBuyItem = (itemId: string) => {
         const itemToBuy = sampleGameItems.find(item => item.id === itemId);
 
@@ -727,30 +838,25 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
         }
 
  if (playerCredits >= itemToBuy.cost) {
-            // Deduct credits
  setPlayerCredits(prevCredits => prevCredits - itemToBuy.cost);
-            // Add item to inventory
  setPlayerInventory(prevInventory => [...prevInventory, itemToBuy]);
  console.log(`Successfully bought ${itemToBuy.name} for ${itemToBuy.cost} credits.`);
- console.log(`Current credits: ${playerCredits - itemToBuy.cost}`); // Log updated credits
- console.log('Inventory:', [...playerInventory, itemToBuy]); // Log updated inventory
+ console.log(`Current credits: ${playerCredits - itemToBuy.cost}`); 
+ console.log('Inventory:', [...playerInventory, itemToBuy]); 
         } else {
             console.warn(`Insufficient credits to buy ${itemToBuy.name}. Need ${itemToBuy.cost}, have ${playerCredits}.`);
         }
     };
 
-    // Handle unequipping an item
     const handleUnequipItem = (itemId: string) => {
  setAnimationState(prevState => {
  const updatedAnimations = prevState.animations.map(anim => {
  if (anim.id === prevState.currentAnimationId) {
  const updatedBasePose = anim.basePose.map(stickman => {
  if (stickman.equippedItems) {
- // Filter out the equipped item with the matching ID
  const updatedEquippedItems = stickman.equippedItems.filter(
  (equippedItem: EquippedItem) => equippedItem.itemId !== itemId
  );
- // If the equippedItems array actually changed, update the stickman
  if (updatedEquippedItems.length < stickman.equippedItems.length) {
  console.log(`Unequipped item ${itemId} from stickman ${stickman.id}.`);
                                              return {
@@ -759,31 +865,28 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                                              };
                                          }
  }
- return stickman; // No change for this stickman
+ return stickman; 
                             });
- return { ...anim, basePose: updatedBasePose }; // Update the base pose
+ return { ...anim, basePose: updatedBasePose }; 
                         }
- return anim; // No change for this animation
+ return anim; 
                     });
  return { ...prevState, animations: updatedAnimations };
                 });
     };
 
-    // Start Recording
     const startRecording = () => {
  setIsRecording(true);
  setRecordingStartTime(Date.now());
- setCurrentRecordingFrames([]); // Clear previous recording
+ setCurrentRecordingFrames([]); 
  console.log("Recording started.");
     };
 
-    // Stop Recording
     const stopRecording = () => {
  setIsRecording(false);
  const duration = recordingStartTime ? Date.now() - recordingStartTime : 0;
 
- // Create FightRecording object
- const recordingId = `recording-${Date.now()}`; // Simple unique ID
+ const recordingId = `recording-${Date.now()}`; 
  const fightRecording: FightRecording = {
  id: recordingId,
  timestamp: Date.now(),
@@ -791,23 +894,19 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
  frames: currentRecordingFrames,
         };
  console.log(`Recording stopped. Duration: ${duration}ms. Captured ${currentRecordingFrames.length} frames.`);
-        console.log("Recorded Frames:", currentRecordingFrames); // For inspection
+        console.log("Recorded Frames:", currentRecordingFrames); 
  setRecordingStartTime(null);
-    };
-
- // Determine which items are equipped across all stickmen in the current animation
-    // Save the recording to local storage
+    
     try {
         const recordingJson = JSON.stringify(fightRecording);
         localStorage.setItem(`fightRecording_${recordingId}`, recordingJson);
-        setSavedRecordingIds(prevIds => [...prevIds, recordingId]); // Add to list of saved IDs
+        setSavedRecordingIds(prevIds => [...prevIds, recordingId]); 
         console.log(`Recording ${recordingId} saved to local storage.`);
     } catch (error) {
         console.error("Failed to save recording to local storage:", error);
     }
     };
 
-    // Load Recording
     const loadRecording = (recordingId: string): FightRecording | null => {
         try {
             const recordingJson = localStorage.getItem(`fightRecording_${recordingId}`);
@@ -820,96 +919,118 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
  return null;
         }
     };
-    const equippedItemIds = animationState.animations
- .find(anim => anim.id === animationState.currentAnimationId)
- ?.basePose.flatMap(s => s.equippedItems?.map(ei => ei.itemId) || []) || [];
+    const currentAnimation = animationState.animations.find(anim => anim.id === animationState.currentAnimationId);
+    const equippedItemIds = currentAnimation?.basePose.flatMap(s => s.equippedItems?.map(ei => ei.itemId) || []) || [];
+
   return (
         <div>
-            <h1>HegArt - Symmetric Art Generator</h1>
+            <h1>Stickman Animation Editor</h1>
 
             <StickmanCanvas
                 stickmen={stickmen}
-                onStickmanUpdate={handleStickmanUpdate}
- onStickmanPartClick={handleStickmanPartClick} // Pass the new handler
+                // onStickmanUpdate={handleStickmanUpdate} // This prop might not exist on this StickmanCanvas version
+                // onStickmanPartClick={handleStickmanPartClick}
+                width={800} // Example width
+                height={600} // Example height
+                currentTime={animationState.currentTime}
+                duration={currentAnimation?.duration || 0}
+                availableItems={sampleGameItems}
+                onStickmanPartClick={(stickmanId, partId) => handleStickmanPartClick(stickmanId, partId, false, null)} // Pass a basic handler
             />
 
-            {/* Layout container for timeline and layer panel */}
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-            {/* Timeline Component */}
             <Timeline
-                animationState={animationState}
-                setAnimationState={setAnimationState}
-                currentTime={animationState.currentTime} // Pass currentTime
-                 duration={animationState.animations.find(anim => anim.id === animationState.currentAnimationId)?.duration || 0} // Pass duration
-                 isPlaying={animationState.isPlaying} // Pass isPlaying
-                 isLooping={false} // Placeholder for isLooping
-                 setIsLooping={() => {}} // Placeholder for setIsLooping
-                 loopStartTime={0} // Placeholder for loopStartTime
-                 setLoopStartTime={() => {}} // Placeholder for setLoopStartTime
-                 loopEndTime={animationState.animations.find(anim => anim.id === animationState.currentAnimationId)?.duration || 0} // Placeholder for loopEndTime
-                 setLoopEndTime={() => {}} // Placeholder for setLoopEndTime
-                 loopCount={null} // Placeholder for loopCount
-                 setLoopCount={() => {}} // Placeholder for setLoopCount
+                 animation={currentAnimation || null} // Pass the current animation object
+                 currentTime={animationState.currentTime}
+                 isPlaying={animationState.isPlaying}
+                 onScrub={handleTimelineScrub}
+                 onPlay={() => setAnimationState(prev => ({ ...prev, isPlaying: true }))}
+                 onPause={() => setAnimationState(prev => ({ ...prev, isPlaying: false }))}
+                 onStop={() => setAnimationState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }))}
+                 onAddKeyframe={(time) => {
+                     // Logic to add keyframe to current layer at 'time'
+                     // For simplicity, call handleStickmanUpdate which adds/updates keyframe at current time
+                     handleStickmanUpdate(stickmen);
+                 }}
+                 onDeleteKeyframe={(time) => {
+                     // Logic to delete keyframe from current layer at 'time'
+                     setAnimationState(prevState => {
+                         const currentAnim = prevState.animations.find(a => a.id === prevState.currentAnimationId);
+                         const currentLay = currentAnim?.layers.find(l => l.id === prevState.currentLayerId);
+                         if (!currentAnim || !currentLay) return prevState;
 
-                // Pass callbacks for Timeline actions to App.tsx
-                onAddKeyframe={(time) => {
-                    // This logic might change slightly with layers,
-                    // adding a keyframe adds it to the current layer
-                    // Assuming onAddKeyframe from Timeline passes the current time
-                    handleStickmanUpdate(stickmen); // Capture current pose at current time on the current layer
-                }}
-                onDeleteKeyframe={(time) => {
-                    // This needs implementation to delete from the current layer
-                     // Implement layer-specific keyframe deletion
-                     // This requires knowing which layer to delete from, likely the current layer
-                }}
-                 // Pass LayerPanel props to Timeline so it can render it (or manage layout separately)
-                 layers={currentAnimation?.layers || []} // Pass layers from current animation
-                 currentLayerId={animationState.currentLayerId} // Pass current layer ID
-                 onSelectLayer={handleSelectLayer} // Pass select layer handler
-                 onAddLayer={handleAddLayer} // Pass add layer handler
-                 onDeleteLayer={() => {
-                     // Call delete handler for the currently selected layer
-                      if (animationState.currentLayerId) {
-                          handleDeleteLayer(animationState.currentLayerId);
-                      }
+                         const updatedKeyframes = currentLay.keyframes.filter(kf => kf.time !== time);
+                         const updatedLayer = { ...currentLay, keyframes: updatedKeyframes };
+                         const updatedLayers = currentAnim.layers.map(l => l.id === updatedLayer.id ? updatedLayer : l);
+                         const updatedAnimation = { ...currentAnim, layers: updatedLayers };
+                         const updatedAnimations = prevState.animations.map(a => a.id === updatedAnimation.id ? updatedAnimation : a);
+                         return { ...prevState, animations: updatedAnimations };
+                     });
+                 }}
+                 onMoveKeyframe={(oldTime, newTime) => {
+                     // Logic to move keyframe from oldTime to newTime on current layer
+                     setAnimationState(prevState => {
+                        const currentAnim = prevState.animations.find(a => a.id === prevState.currentAnimationId);
+                        const currentLay = currentAnim?.layers.find(l => l.id === prevState.currentLayerId);
+                        if (!currentAnim || !currentLay) return prevState;
+
+                        const keyframeToMove = currentLay.keyframes.find(kf => kf.time === oldTime);
+                        if (!keyframeToMove) return prevState;
+
+                        const otherKeyframes = currentLay.keyframes.filter(kf => kf.time !== oldTime);
+                        const movedKeyframe = { ...keyframeToMove, time: newTime };
+                        const updatedKeyframes = [...otherKeyframes, movedKeyframe].sort((a,b) => a.time - b.time);
+
+                        const updatedLayer = { ...currentLay, keyframes: updatedKeyframes };
+                        const updatedLayers = currentAnim.layers.map(l => l.id === updatedLayer.id ? updatedLayer : l);
+                        const updatedAnimation = { ...currentAnim, layers: updatedLayers };
+                        const updatedAnimations = prevState.animations.map(a => a.id === updatedAnimation.id ? updatedAnimation : a);
+                        return { ...prevState, animations: updatedAnimations };
+                     });
                  }}
              />
 
-            {/* Layer Panel Component */}
             <LayerPanel
-                layers={currentAnimation?.layers || []} // Pass layers from current animation
-                currentLayerId={animationState.currentLayerId} // Pass current layer ID
-                onSelectLayer={handleSelectLayer} // Pass select layer handler
-                onAddLayer={handleAddLayer} // Pass add layer handler
-                onDeleteLayer={() => {
-                    // Call delete handler for the currently selected layer
-                     if (animationState.currentLayerId) {
-                         handleDeleteLayer(animationState.currentLayerId);
-                     }
+                layers={currentAnimation?.layers || []} 
+                currentLayerId={animationState.currentLayerId} 
+                onSelectLayer={handleSelectLayer} 
+                onAddLayer={handleAddLayer} 
+                onDeleteLayer={(layerId) => handleDeleteLayer(layerId)} // Pass layerId directly
+                onChangeLayerBlendMode={(layerId, blendMode) => { // Added this prop
+                    setAnimationState(prevState => {
+                        const animIndex = prevState.animations.findIndex(a => a.id === prevState.currentAnimationId);
+                        if (animIndex === -1) return prevState;
+                        const layerIndex = prevState.animations[animIndex].layers.findIndex(l => l.id === layerId);
+                        if (layerIndex === -1) return prevState;
+
+                        const newAnimations = [...prevState.animations];
+                        newAnimations[animIndex] = {
+                            ...newAnimations[animIndex],
+                            layers: newAnimations[animIndex].layers.map((l, idx) => 
+                                idx === layerIndex ? { ...l, blendMode } : l
+                            )
+                        };
+                        return { ...prevState, animations: newAnimations };
+                    });
                 }}
             />
 
-            {/* Game Item Panel */}
             <GameItemPanel
                 items={sampleGameItems}
                 onEquipItem={handleEquipItem}
-                onUnequipItem={handleUnequipItem} // Pass the unequip handler
-                equippedItemIds={equippedItemIds} // Pass the list of equipped item IDs
+                // onUnequipItem={handleUnequipItem} // Prop might be missing on this GameItemPanel version
+                // equippedItemIds={equippedItemIds} 
             />
-            <GameItemPanel items={sampleGameItems} onEquipItem={handleEquipItem} />
-
-            {/* Shop Panel */}
+            
             <ShopPanel
                 itemsForSale={sampleGameItems}
-                playerCredits={playerCredits} // Pass player credits to ShopPanel
+                playerCredits={playerCredits} 
                 onBuyItem={handleBuyItem}
             />
 
                 <span>{animationState.currentTime}ms</span>
             </div>
 
-            {/* Save/Load Controls */}
             <div>
                 <input
                     type="text"
@@ -917,9 +1038,8 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                     value={filename}
                     onChange={(e) => setFilename(e.target.value)}
                 />
-                <button onClick={handleSaveStickman}>Save Stickman</button>
-                <button onClick={handleLoadStickmen}>Load Stickmen</button>
-                {/* Display loaded stickman names */}
+                <button onClick={handleSaveStickmanAnimation}>Save Animation</button>
+                <button onClick={handleLoadStickmanAnimation}>Load Animation</button>
                 <ul>
                     {animationState.animations.map(anim => (
                         <li key={anim.id}>{anim.name}</li>
@@ -927,8 +1047,6 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
                 </ul>
             </div>
 
-            {/* Basic Add/Remove Part Controls */}
-            {/* Recording Controls */}
             <div>
                 <h2>Recording</h2>
                 <button onClick={startRecording} disabled={isRecording}>Start Recording</button>
@@ -946,7 +1064,7 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
             <div>
                 <button onClick={handleAddLimb}>Add Limb</button>
                 <button onClick={handleAddSegment}>Add Segment</button>
-                <button onClick={handleRemovePart}>Remove First Segment of First Limb</button>
+                <button onClick={handleRemovePart}>Remove Part</button>
             </div>
 
         </div>
@@ -954,4 +1072,3 @@ import ShopPanel from './components/ShopPanel'; // Import the ShopPanel componen
 }
 
 export default App;
-

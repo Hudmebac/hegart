@@ -1,3 +1,4 @@
+
 // src/types/stickman.ts
 
 // Define a point in 2D space
@@ -5,6 +6,9 @@ export interface Point {
     x: number;
     y: number;
 }
+
+// Define BlendMode type
+export type BlendMode = 'override' | 'additive' | 'Passthrough' | 'Mask' | 'Alpha';
 
 // Define properties for a limb (e.g., arm, leg)
 export interface Limb {
@@ -64,18 +68,15 @@ export interface Segment {
     lineWidth?: number; // Optional: Custom line width
 }
 
-
-// Define properties for a limb segment (e.g., upper arm, forearm)
-export interface Segment {
-    id: string; // Unique identifier for the segment
-import { Ability } from "./ability";
-
+// Import Ability if it's used here and defined elsewhere
+// import { Ability } from "./ability";
+// For now, let's assume Ability type is simple or defined inline if not complex
+export interface Ability {
+    id: string;
     name: string;
-    length: number; // Length of the segment
-    thickness: number; // Default thickness for drawing
-    rotation: number; // Rotation in radians relative to its parent segment or limb connection
-    position: Point; // Position relative to its parent joint or segment endpoint (usually {0,0})
-    parentEndpoint?: Point; // Not typically needed in the data structure if position is relative
+    // Add other ability properties as needed
+}
+
 // Define the complete Stickman structure
 export interface Stickman {
     id: string; // Unique identifier for the stickman
@@ -95,24 +96,28 @@ export interface Stickman {
     currentAttackAnimation: string | null; // The ID of the current attack animation being played (null if none)
     limbs: Limb[];
     unlockedAbilities: Ability[]; // Abilities the stickman has unlocked
+    equippedItems?: EquippedItem[]; // Make optional or initialize as empty array
 }
 
 // Define properties that can be animated (for targeting layers)
 export type AnimatableProperty = 'position' | 'rotation'; // Add more as needed
 
 // Define a LayerKeyframe which stores state for a specific layer
-// The structure of data within LayerKeyframe will depend on the layer's scope
 export interface LayerKeyframe {
     time: number; // Timestamp for the keyframe
-    // Data specific to the layer's purpose.
-    // If the layer scopes parts, this might contain partial Stickman structures for those parts.
-    // If the layer scopes properties, this might contain key-value pairs of property paths and values.
-    // This structure will need refinement based on how we represent part/property state.
-    [partId: string]: { // Keyed by part ID (body, head, limb segment IDs)
-      position?: Point;
-      rotation?: number;
-      // Add other animatable properties here as needed
-    };
+    // Data specific to the layer's purpose, keyed by stickman ID, then part ID.
+    [stickmanId: string]: { // e.g., 'stickman-1'
+        body?: Partial<Body>;
+        head?: Partial<Head>;
+        limbs?: {
+            [limbId: string]: { // e.g., 'right-arm'
+                segments?: {
+                    [segmentId: string]: Partial<Segment>; // e.g., 'right-forearm'
+                };
+                // Potentially other limb-level animatable properties if needed
+            };
+        };
+    } | number; // Allow 'time' property
 }
 
 
@@ -120,33 +125,71 @@ export interface LayerKeyframe {
 export interface AnimationLayer {
     id: string; // Unique identifier for the layer
     name: string;
-    // How this layer affects the overall animation:
-    blendMode: 'override' | 'additive' | 'Passthrough' | 'Mask' | 'Alpha';
+    blendMode: BlendMode; // Use the defined BlendMode type
     opacity: number; // Opacity of the layer (0.0 to 1.0)
     isVisible: boolean; // Whether the layer is visible
     isLocked: boolean; // Whether the layer is locked from editing
-
-    // Define what this layer animates:
-    // This version scopes by an array of stickman part IDs.
     scope: {
-        partIds: string[]; // Array of stickman part IDs this layer affects (e.g., ["body", "head", "right-arm-segment-1"])
+        partIds: string[]; // Array of stickman part IDs this layer affects (e.g., "stickman-1.body", "stickman-1.head", "stickman-1.limbs.right-arm.segments.right-forearm")
+        properties?: AnimatableProperty[]; // Optional: specific properties this layer animates on the scoped parts
     };
-
     keyframes: LayerKeyframe[]; // Keyframes specific to this layer
 }
 
+// Base keyframe for the main animation timeline (if still used)
+export interface Keyframe {
+    time: number;
+    stickmen: Stickman[]; // Full stickman pose at this time
+}
 
 // Define an Animation
 export interface Animation {
     id: string;
     name: string;
     duration: number;
-    // Base keyframes can represent a default animation or pose that layers build upon
-    // Alternatively, we could rely solely on layers and a basePose
-    keyframes: Keyframe[]; // Consider if base keyframes are still needed or if basePose and layers suffice
-    layers: AnimationLayer[]; // Array of animation layers
-    basePose: Stickman[]; // A base pose that layers are applied on top of
+    keyframes: Keyframe[]; 
+    layers: AnimationLayer[]; 
+    basePose: Stickman[]; 
 }
 
-// Keep AnimationState as is for now, it manages the overall animation data
-// export interface AnimationState { ... }
+// AnimationState to manage overall animation playback and data
+export interface AnimationState {
+    animations: Animation[];
+    currentAnimationId: string | null;
+    currentTime: number;
+    isPlaying: boolean;
+    currentLayerId: string | null; // ID of the currently selected layer for editing
+}
+
+// Types related to Fight Recording and Equipped Items (if they are part of stickman.ts)
+// It's common to keep game-specific item types separate (e.g., in types/game.ts)
+// but if they are deeply intertwined with stickman structure for animation, they might be here.
+
+export interface EquippedItem {
+    itemId: string;
+    attachedToPartId: string; // e.g., 'body-1', 'head-1', 'right-forearm'
+    // Optional: effects or properties specific to how it's equipped
+    effects?: any[]; // Define specific effect types later
+}
+
+export interface FightRecordingFrame { // Renamed from RecordedFrame if that's for drawing paths
+    time: number;
+    stickmen: {
+        id: string;
+        pose: any; // Simplified for now, should be a serializable representation of Stickman parts
+        health: number;
+    }[];
+}
+
+export interface FightRecording {
+    id: string;
+    timestamp: number;
+    duration: number;
+    frames: FightRecordingFrame[];
+}
+
+// If Weapon is a specific type of EquippedItem with its own properties
+export interface Weapon extends EquippedItem {
+    damage: number;
+    attackType: 'melee' | 'ranged';
+}
