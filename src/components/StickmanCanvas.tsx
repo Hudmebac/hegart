@@ -2,9 +2,9 @@
 "use client";
 
 import React, { useRef, useEffect, useMemo } from 'react';
-import { Stickman, Part } from '../types/stickman';
+import { Stickman, Body, Head, Limb, Segment, Point as StickmanPoint } from '../types/stickman'; // Renamed Point to StickmanPoint to avoid conflict if any
 import { GameItem, EquippedItem, Weapon, Accessory } from '../types/game';
-import { attackAnimations } from '../animation/attackAnimations'; // Import attack animations
+// import { attackAnimations } from '../animation/attackAnimations'; // Commented out for now, requires StickmanPose definition
 
 interface StickmanCanvasProps {
   stickmen: Stickman[];
@@ -12,11 +12,9 @@ interface StickmanCanvasProps {
   height: number;
   currentTime: number;
   duration: number;
-  availableItems: GameItem[]; // Add available items prop
-  onStickmanPartClick: (stickmanId: string, partId: string) => void; // New prop
+  availableItems: GameItem[];
+  onStickmanPartClick: (stickmanId: string, partId: string) => void;
 }
-
-// Helper function to blend two partial poses (for blending attack animations)
 
 const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
   stickmen,
@@ -27,29 +25,146 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
   availableItems,
   onStickmanPartClick,
 }) => {
-
-  // Create a map for quick item lookup
-  const itemMap = useMemo(() => {
-    return availableItems.reduce((map, item) => ({ ...map, [item.id]: item }), {});
-  }, [availableItems]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    const blendPoses = (basePoseParts: Part[], overlayPoseData: { [partId: string]: any }): Part[] => {
-        // Create a deep copy of the base pose parts
-        const blendedParts: Part[] = JSON.parse(JSON.stringify(basePoseParts));
+  const itemMap = useMemo(() => {
+    if (!availableItems) return {}; // Add a guard for undefined availableItems
+    return availableItems.reduce((map, item) => ({ ...map, [item.id]: item }), {} as Record<string, GameItem>);
+  }, [availableItems]);
 
-        // Iterate through the overlay pose data
-        for (const partId in overlayPoseData) {
-            const overlayPartData = overlayPoseData[partId];
-            const partToBlend = blendedParts.find(p => p.id === partId);
+  // Helper: Rotate a point around an origin
+  const rotatePoint = (point: StickmanPoint, origin: StickmanPoint, angle: number): StickmanPoint => {
+    const s = Math.sin(angle);
+    const c = Math.cos(angle);
+    const px = point.x - origin.x;
+    const py = point.y - origin.y;
+    const xnew = px * c - py * s;
+    const ynew = px * s + py * c;
+    return { x: xnew + origin.x, y: ynew + origin.y };
+  };
 
-            if (partToBlend && overlayPoseData) {
-                // Simple override for now - can implement actual blending later
-                Object.assign(partToBlend, overlayPartData);
+  // Helper to draw an equipped item (simplified)
+  const drawEquippedItem = (ctx: CanvasRenderingContext2D, item: GameItem, partAbsPos: StickmanPoint, partAbsRot: number) => {
+    ctx.save();
+    ctx.translate(partAbsPos.x, partAbsPos.y);
+    ctx.rotate(partAbsRot);
+    // Item-specific drawing logic (simplified placeholder)
+    ctx.fillStyle = 'grey';
+    if (item.type === 'weapon') {
+      ctx.fillRect(0, -5, 30, 10); // Placeholder weapon shape
+    } else if (item.type === 'accessory') {
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2); // Placeholder accessory shape
+      ctx.fill();
+    }
+    ctx.restore();
+  };
+
+
+  // Refactored drawStickman function
+  const drawStickmanFigure = (ctx: CanvasRenderingContext2D, stickman: Stickman) => {
+    ctx.save(); // Save the initial context state
+
+    // --- Global Transformation based on Body ---
+    ctx.translate(stickman.body.position.x, stickman.body.position.y);
+    ctx.rotate(stickman.body.rotation);
+
+    // --- Draw Body ---
+    // Body's local origin is (0,0) after the global transform. Draw relative to that.
+    ctx.strokeStyle = stickman.body.strokeStyle || 'black';
+    ctx.lineWidth = stickman.body.lineWidth || stickman.body.thickness;
+    ctx.strokeRect(-stickman.body.width / 2, -stickman.body.height / 2, stickman.body.width, stickman.body.height);
+    
+    // Draw items attached to body
+    (stickman.equippedItems || [])
+        .filter(ei => ei.attachedToPartId === stickman.body.id)
+        .forEach(ei => {
+            const itemData = itemMap[ei.itemId];
+            if (itemData) {
+                // For body, item position would be relative to body center (0,0 in current ctx)
+                // This needs proper offset/attachment logic from EquippedItem
+                drawEquippedItem(ctx, itemData, {x: 0, y: 0}, 0); // Placeholder attachment
             }
-        }
-        return blendedParts;
-    };
+        });
+
+
+    // --- Draw Head ---
+    // Head is positioned relative to its connection point on the body.
+    // Body's connection points are relative to body's center (0,0 in current local coords).
+    const headConnectionLocal = stickman.body.connectionPoints.head; // This is {x, y} relative to body center
+
+    ctx.save(); // Save context for head transformation
+    ctx.translate(headConnectionLocal.x, headConnectionLocal.y); // Move to where head connects on body
+    ctx.rotate(stickman.head.rotation); // Apply head's rotation relative to body
+    // Head's own `position` is relative to its connection point *after* parent (body) rotation and head's own rotation
+    ctx.translate(stickman.head.position.x, stickman.head.position.y);
+
+
+    ctx.strokeStyle = stickman.head.strokeStyle || 'black';
+    ctx.lineWidth = stickman.head.lineWidth || stickman.head.thickness;
+    ctx.beginPath();
+    ctx.arc(0, 0, stickman.head.radius, 0, Math.PI * 2); // Draw head at its local origin
+    ctx.stroke();
+
+    (stickman.equippedItems || [])
+        .filter(ei => ei.attachedToPartId === stickman.head.id)
+        .forEach(ei => {
+            const itemData = itemMap[ei.itemId];
+            if (itemData) {
+                 drawEquippedItem(ctx, itemData, {x:0, y:0}, 0); // Placeholder attachment
+            }
+        });
+    ctx.restore(); // Restore from head transformation
+
+
+    // --- Draw Limbs ---
+    stickman.limbs.forEach(limb => {
+      ctx.save(); // Save context for this limb chain
+
+      // Limb connection point is relative to body's center (0,0 in current local coords)
+      const limbConnectionLocal = stickman.body.connectionPoints[limb.id] || limb.connectionPoint;
+      ctx.translate(limbConnectionLocal.x, limbConnectionLocal.y);
+      
+      // Keep track of the current rotation context for segments
+      // Limb itself doesn't have a rotation property in the type, segments rotate relative to connection/previous segment
+
+      limb.segments.forEach(segment => {
+        ctx.save(); // Save context for this segment
+
+        // Segment rotation is relative to its connection point (start of the segment)
+        ctx.rotate(segment.rotation);
+        // Segment's own `position` is typically {x:0, y:0} as it's drawn from its start
+
+        ctx.strokeStyle = segment.strokeStyle || 'black';
+        ctx.lineWidth = segment.lineWidth || segment.thickness;
+        ctx.beginPath();
+        ctx.moveTo(0, 0); // Start of segment
+        ctx.lineTo(segment.length, 0); // Draw along its local x-axis
+        ctx.stroke();
+
+        (stickman.equippedItems || [])
+            .filter(ei => ei.attachedToPartId === segment.id)
+            .forEach(ei => {
+                const itemData = itemMap[ei.itemId];
+                if (itemData) {
+                    // Item attached to a segment, could be at its start, middle, or end
+                    // Placeholder: draw at mid-point of segment
+                    drawEquippedItem(ctx, itemData, {x: segment.length / 2, y:0}, 0); 
+                }
+            });
+
+        // Translate to the end of this segment for the next one in the chain
+        ctx.translate(segment.length, 0);
+        
+        ctx.restore(); // Restore from this segment's transformation
+      });
+
+      ctx.restore(); // Restore from this limb chain's transformation
+    });
+
+    ctx.restore(); // Restore initial context state (before this stickman)
+  };
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,163 +173,19 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    // Clear canvas
     context.clearRect(0, 0, width, height);
 
-    // Function to draw an equipped item
-    const drawEquippedItem = (ctx: CanvasRenderingContext2D, equippedItem: EquippedItem, attachedPart: Part) => {
-        const item = itemMap[equippedItem.itemId];
-        if (!item) return; // Item not found
-
-        ctx.save();
-        // Translate and rotate to the part's local origin
-        ctx.translate(attachedPart.position.x, attachedPart.position.y);
-        ctx.rotate(attachedPart.rotation);
-
-        // Apply item-specific offsets and rotations if any
-        ctx.translate(equippedItem.offsetX || 0, equippedItem.offsetY || 0);
-        ctx.rotate(equippedItem.rotationOffset || 0);
-
-        // Draw the item based on its type or visual properties
-        ctx.fillStyle = 'gray'; // Default color for items
-
-        if (item.type === 'weapon') {
-             const weapon = item as Weapon;
-             // Basic visual representation: a rectangle
-             const weaponWidth = 50; // Example size
-             const weaponHeight = 10; // Example size
-             ctx.fillRect(-weaponWidth / 2, -weaponHeight / 2, weaponWidth, weaponHeight);
-
-             // Simple handle
-             ctx.fillStyle = 'brown';
-             ctx.fillRect(-weaponWidth / 2, -weaponHeight / 2 - 5, 10, 20);
-
-        } else if (item.type === 'accessory') {
-             const accessory = item as Accessory;
-             // Basic visual representation: a circle
-             const accessoryRadius = 8; // Example size
-             ctx.beginPath();
-             ctx.arc(0, 0, accessoryRadius, 0, Math.PI * 2);
-             ctx.fill();
-        }
-        // Add drawing logic for other item types (armor, etc.) here
-
-        // Optional: Draw attachment point visual aid
-        // ctx.fillStyle = 'red';
-        // ctx.beginPath();
-        // ctx.arc(0, 0, 3, 0, Math.PI * 2);
-        // ctx.fill();
-
-
-        ctx.restore();
-    };
-
-     // Function to get the interpolated pose data for an attack animation
-    const getInterpolatedAttackPose = (stickman: Stickman, time: number): { [partId: string]: any } => {
-        if (!stickman.currentAttackAnimation) return {}; // No attack animation playing
-
-        const animationData = attackAnimations[stickman.currentAttackAnimation];
-        if (!animationData || animationData.length === 0) return {}; // Animation data not found
-
-        // You will need to track the *playback time* of the attack animation for each stickman
-        // For simplicity here, we'll use a placeholder and assume the animation loops or plays once
-        // A proper system needs to manage the animation's elapsed time and duration.
-        // Let's assume the animation time loops based on the main currentTime for this example,
-        // but this should be managed per-stickman in a real implementation.
-         const attackAnimationTime = time % animationData[animationData.length - 1].time; // Simple loop placeholder
-
-         // Find the relevant keyframes in the attack animation data
-        const sortedKeyframes = [...animationData].sort((a, b) => a.time - b.time);
-        let kfBefore = sortedKeyframes[0];
-        let kfAfter = sortedKeyframes[sortedKeyframes.length - 1];
-
-         for (let i = 0; i < sortedKeyframes.length - 1; i++) {
-            if (attackAnimationTime >= sortedKeyframes[i].time && attackAnimationTime <= sortedKeyframes[i + 1].time) {
-                kfBefore = sortedKeyframes[i];
-                kfAfter = sortedKeyframes[i + 1];
-                break;
-            }
-         }
-
-         if (kfBefore.time === kfAfter.time) return kfBefore.pose; // At a keyframe
-
-        const timeRange = kfAfter.time - kfBefore.time;
-        const timeElapsed = attackAnimationTime - kfBefore.time;
-        const t = timeElapsed / timeRange;
-
-        // Simple interpolation for parts present in both keyframes (needs refinement)
-        const interpolatedPose: { [partId: string]: any } = {};
-        // You would interpolate properties (position, rotation) for each part defined in the keyframes here.
-        // For this diff, we'll keep it conceptual as interpolation logic exists elsewhere.
-        // This part needs to be implemented using interpolation from utils/animation.ts
-         console.warn("Attack animation interpolation is conceptual and needs implementation.");
-         // Placeholder: return the pose from the closest keyframe or a blend
-         return kfBefore.pose; // Simple placeholder
-    };
-
-    // Function to draw a stickman (similar to previous implementation)
-    const drawStickman = (ctx: CanvasRenderingContext2D, stickman: Stickman) => {
-      ctx.save();
-      // Apply global stickman transformations if any
-      ctx.translate(stickman.position.x, stickman.position.y);
-      ctx.rotate(stickman.rotation);
-
-       let partsToDraw = stickman.parts;
-
-        // If an attack animation is playing, blend its pose with the base pose
-        if (stickman.currentAttackAnimation) {
-            // Get the interpolated pose data from the attack animation at the current time
-            const interpolatedAttackPoseData = getInterpolatedAttackPose(stickman, currentTime); // Use currentTime for placeholder
-
-            // Blend the stickman's base pose with the attack animation pose
-            partsToDraw = blendPoses(stickman.parts, interpolatedAttackPoseData);
-        }
-
-      stickman.parts.forEach(part => {
-        ctx.save();
-        // Apply part-specific transformations
-        ctx.translate(part.position.x, part.position.y);
-        ctx.rotate(part.rotation);
-
-        // Draw the part (e.g., a rectangle or circle)
-        ctx.fillStyle = part.color || 'black'; // Assuming parts have color
-        if (part.type === 'segment') { // Assuming parts have a type
-            const segment = part as Part; // Cast to specific part type if needed
-            ctx.fillRect(-segment.length / 2, -segment.thickness / 2, segment.length, segment.thickness);
-        } else if (part.type === 'joint') {
-             const joint = part as Part; // Cast
-             ctx.beginPath();
-             ctx.arc(0, 0, joint.radius || 5, 0, Math.PI * 2);
-             ctx.fill();
-        } else if (part.type === 'head') {
-             const head = part as Part; // Cast
-             ctx.beginPath();
-             ctx.arc(0, 0, head.radius || 10, 0, Math.PI * 2);
-             ctx.fill();
-        }
-         // Add more part types (Body) as needed
-
-        ctx.restore();
-
-        // Draw equipped items attached to this part
-         const equippedItemsOnPart = stickman.equippedItems.filter(eqItem => eqItem.attachedToPartId === part.id);
-         equippedItemsOnPart.forEach(eqItem => {
-            drawEquippedItem(ctx, eqItem, part);
-         });
-
-      });
-
-      ctx.restore();
-    };
-
-
     stickmen.forEach(stickman => {
-        drawStickman(context, stickman);
+        // TODO: Integrate attack animation blending here if needed.
+        // For now, just draw the base stickman figure.
+        drawStickmanFigure(context, stickman);
     });
 
-  }, [stickmen, width, height, currentTime, itemMap]); // Redraw when stickmen data or time changes. Added itemMap to dependencies.
+  }, [stickmen, width, height, currentTime, itemMap, availableItems]); // Added availableItems to dependency array due to itemMap
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    // Simplified click handler for now.
+    // Accurate hit detection requires transforming mouse coordinates into each part's local space.
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -222,54 +193,32 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
 
-    // Iterate through stickmen and their parts to check for clicks
-    for (const stickman of stickmen) {
-      // We need a way to get the transformed coordinates and bounding boxes of each part
-      // This requires re-applying transformations and calculating bounds for hit testing.
-      // This is a simplified approach checking against simplified bounds.
-      // A more accurate approach would involve inverse transformations.
+    // Basic placeholder for clicking the first stickman's body
+    if (stickmen.length > 0) {
+        const firstStickman = stickmen[0];
+        // This is a very rough check and doesn't account for rotation or actual shape
+        const body = firstStickman.body;
+        const bodyWorldX = body.position.x - body.width / 2;
+        const bodyWorldY = body.position.y - body.height / 2;
 
-      // Simplified hit testing: Iterate through parts and check bounds.
-      // This needs to be more robust to account for rotations and translations.
-
-       for (const part of stickman.parts) {
-           // This hit testing is highly simplified and needs significant improvement
-
-          // This is a very basic bounding box check and WILL NOT work correctly
-          // with rotated parts. A proper implementation needs to transform
-          // the mouse coordinates into the part's local space for accurate hit testing.
-
-           const partBounds = {
-                x: stickman.position.x + part.position.x, // Simplified, ignores rotations
-                y: stickman.position.y + part.position.y, // Simplified, ignores rotations
-                width: 20, // Placeholder, needs to be calculated from part size
-                height: 20, // Placeholder, needs to be calculated from part size
-           };
-
-           // Check if mouse is within simplified bounds
-           if (mouseX > partBounds.x - partBounds.width / 2 &&
-              mouseX < partBounds.x + partBounds.width / 2 &&
-              mouseY > partBounds.y - partBounds.height / 2 &&
-              mouseY < partBounds.y + partBounds.height / 2) {
-              // Simple hit detected (will be inaccurate)
-              onStickmanPartClick(stickman.id, part.id);
-              return; // Stop checking after finding a hit
-           }
-       }
+        if (mouseX >= bodyWorldX && mouseX <= bodyWorldX + body.width &&
+            mouseY >= bodyWorldY && mouseY <= bodyWorldY + body.height) {
+            onStickmanPartClick(firstStickman.id, body.id);
+            return;
+        }
     }
+    console.log(`Canvas clicked at (${mouseX}, ${mouseY}). Hit detection TBD.`);
   };
-
 
   return (
     <canvas
       ref={canvasRef}
       width={width}
       height={height}
-      onClick={handleCanvasClick} // Add the onClick handler
+      onClick={handleCanvasClick}
+      style={{ border: '1px solid #ccc', backgroundColor: '#f0f0f0' }}
     />
   );
 };
 
 export default StickmanCanvas;
-
-    
