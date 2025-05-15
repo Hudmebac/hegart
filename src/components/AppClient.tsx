@@ -19,6 +19,8 @@ import ThemeToggle from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle, ZoomIn, ZoomOut, RefreshCw as ResetViewIcon, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
@@ -94,6 +96,12 @@ export interface CanvasViewTransform {
 type ControlSectionId = 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
 type HeaderControlSelectionId = ControlSectionId | 'all';
 
+interface SaveDialogState {
+  isOpen: boolean;
+  type: 'image' | 'video' | null;
+  fileName: string;
+  data?: string | Blob; // dataURL for image, Blob for video
+}
 
 const initialSymmetrySettings: SymmetrySettings = { mirrorX: false, mirrorY: false, rotationalAxes: 1 };
 const initialAnimationSettings: AnimationSettings = {
@@ -117,6 +125,8 @@ const initialTextSettings: TextSettings = {
   textBaseline: 'top',
 };
 const initialCanvasViewTransform: CanvasViewTransform = { pan: { x: 0, y: 0 }, zoom: 1 };
+const initialSaveDialogState: SaveDialogState = { isOpen: false, type: null, fileName: '', data: undefined };
+
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -156,6 +166,8 @@ export default function AppClient() {
   const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>()); 
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+  const [saveDialogState, setSaveDialogState] = useState<SaveDialogState>(initialSaveDialogState);
+
 
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
@@ -189,7 +201,7 @@ export default function AppClient() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-      const parentElement = canvas.parentElement?.parentElement; // The main tag is parent.parentElement
+      const parentElement = canvas.parentElement?.parentElement; 
       if (!parentElement) return;
 
       const observer = new ResizeObserver(() => {
@@ -344,6 +356,27 @@ export default function AppClient() {
   }, [history, toast]);
 
   const canUndo = history.length > 0;
+
+  const proceedWithSave = (fileName: string, type: 'image' | 'video', data: string | Blob) => {
+    if (type === 'image' && typeof data === 'string') {
+      const link = document.createElement('a');
+      link.download = fileName.trim() || 'hegart-drawing.png';
+      link.href = data;
+      link.click();
+      toast({ title: "Drawing Saved", description: `${link.download} exported.` });
+    } else if (type === 'video' && data instanceof Blob) {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName.trim() || 'hegart-recording.webm';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Recording Saved", description: `${a.download} exported.` });
+    }
+    setSaveDialogState(initialSaveDialogState); // Close dialog
+  };
 
 
   const handleSaveDrawing = useCallback(async () => {
@@ -534,11 +567,12 @@ export default function AppClient() {
       try {
         await Promise.all(imageLoadPromises);
         const imageURL = tempCanvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = 'hegart-drawing.png';
-        link.href = imageURL;
-        link.click();
-        toast({ title: "Drawing Saved", description: "Image exported as PNG." });
+        setSaveDialogState({
+          isOpen: true,
+          type: 'image',
+          fileName: 'hegart-drawing.png',
+          data: imageURL,
+        });
       } catch (error) {
         console.error("Could not save drawing due to image/text processing error:", error);
         toast({ variant: "destructive", title: "Save Error", description: "Failed to process elements for saving." });
@@ -588,16 +622,13 @@ export default function AppClient() {
 
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'hegart-recording.webm';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setSaveDialogState({
+          isOpen: true,
+          type: 'video',
+          fileName: 'hegart-recording.webm',
+          data: blob,
+        });
         setIsRecording(false);
-        toast({ title: "Recording Saved", description: "Video saved as hegart-recording.webm." });
       };
 
       mediaRecorderRef.current.start();
@@ -613,9 +644,9 @@ export default function AppClient() {
   const handleStopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      toast({ title: "Recording Stopped", description: "Processing video..." });
+      // Toast for "Processing" moved to onstop handler after blob is ready for dialog
     }
-  }, [isRecording, toast]);
+  }, [isRecording]);
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
 
@@ -623,7 +654,7 @@ export default function AppClient() {
     const newPinnedState = !isSidebarPinned;
     setIsSidebarPinned(newPinnedState);
     if (newPinnedState) {
-      setIsSidebarHovered(false); // Ensure hover doesn't interfere when pinning
+      setIsSidebarHovered(false); 
     }
   };
 
@@ -647,26 +678,41 @@ export default function AppClient() {
   const handleSectionSelect = (sectionName: HeaderControlSelectionId) => {
     let newSectionsSize = 0;
     setActiveSections(prevActiveSections => {
-        const newActive = new Set(prevActiveSections);
+        const newActive = new Set<HeaderControlSelectionId>(); // Start fresh for single/all logic
         if (sectionName === 'all') {
-            if (newActive.has('all') || newActive.size === controlPanelSections.length) { // If "all" is active OR all individual are active
-                newActive.clear(); 
+            if (prevActiveSections.has('all') || prevActiveSections.size === controlPanelSections.length) {
+                 // If "all" is active OR all individual are active, clear all
             } else { 
-                newActive.clear();
                 controlPanelSections.forEach(s => newActive.add(s.name));
-                newActive.add('all'); // Add 'all' marker
+                newActive.add('all'); 
             }
         } else { 
-            newActive.delete('all'); 
-            if (newActive.has(sectionName)) { 
-                newActive.delete(sectionName as ControlSectionId); 
-            } else { 
-                newActive.add(sectionName as ControlSectionId); 
+            // If an individual section is clicked
+            if (prevActiveSections.has(sectionName as ControlSectionId) && prevActiveSections.size === 1) {
+                // If it's the only active section, deselect it
+            } else if (prevActiveSections.has(sectionName as ControlSectionId) && prevActiveSections.has('all')) {
+                // If 'all' was active, switch to just this one
+                newActive.add(sectionName as ControlSectionId);
+            }
+            else if (prevActiveSections.has(sectionName as ControlSectionId)) {
+                // If it's active among others (but not 'all'), deselect it
+                prevActiveSections.forEach(s => {
+                    if (s !== sectionName && s !== 'all') newActive.add(s as ControlSectionId);
+                });
+            }
+            else { 
+                // If it's not active, select it (potentially adding to others, or switching from 'all')
+                if (prevActiveSections.has('all')) {
+                     newActive.add(sectionName as ControlSectionId); // Switch from 'all' to this one
+                } else {
+                    prevActiveSections.forEach(s => {
+                         if (s !== 'all') newActive.add(s as ControlSectionId);
+                    });
+                    newActive.add(sectionName as ControlSectionId);
+                }
             }
         }
         newSectionsSize = newActive.size > 0 && newActive.has('all') ? controlPanelSections.length : newActive.size;
-        if (newActive.size > 0 && newActive.size < controlPanelSections.length) newActive.delete('all');
-
         return newActive;
     });
 
@@ -817,7 +863,7 @@ export default function AppClient() {
   };
 
   const sidebarActualOpenState = (activeSections.size > 0) && (isMobile ? isMobileSidebarOpen : (isSidebarPinned || isSidebarHovered));
-  const sidebarIsVisuallyExpanded = sidebarActualOpenState && (isMobile || isSidebarPinned || isSidebarHovered);
+  const sidebarIsVisuallyExpanded = sidebarActualOpenState;
 
 
   const sidebarOnOpenChangeHandler = (newOpenState: boolean) => {
@@ -836,7 +882,6 @@ export default function AppClient() {
     }
   }, [activeSections, isMobileSidebarOpen, isMobile]);
 
-  // CSS variables for dynamic padding
   const mainContentStyle = {
     "--sidebar-width": SIDEBAR_WIDTH,
     "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
@@ -867,6 +912,45 @@ export default function AppClient() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={saveDialogState.isOpen} onOpenChange={(open) => setSaveDialogState(prev => ({...prev, isOpen: open}))}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Save {saveDialogState.type === 'image' ? 'Image' : 'Video'}</DialogTitle>
+              <DialogDescription>
+                Enter a filename for your {saveDialogState.type}. The file will be saved to your default downloads location.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="fileName" className="text-right col-span-1">
+                  Filename
+                </Label>
+                <Input
+                  id="fileName"
+                  value={saveDialogState.fileName}
+                  onChange={(e) => setSaveDialogState(prev => ({ ...prev, fileName: e.target.value }))}
+                  className="col-span-3"
+                  placeholder={saveDialogState.type === 'image' ? 'hegart-drawing.png' : 'hegart-recording.webm'}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSaveDialogState(initialSaveDialogState)}>Cancel</Button>
+              <Button 
+                onClick={() => {
+                  if (saveDialogState.data && saveDialogState.type) {
+                    proceedWithSave(saveDialogState.fileName, saveDialogState.type, saveDialogState.data);
+                  }
+                }}
+                disabled={!saveDialogState.fileName.trim()}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+
       <div className="flex h-screen w-full flex-col" style={mainContentStyle}>
         <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b bg-background px-4 gap-2">
           <div className="flex items-center gap-1">
@@ -896,7 +980,7 @@ export default function AppClient() {
               <Tooltip key={allControlsHeaderConfig.name}>
                 <TooltipTrigger asChild>
                   <Button
-                    variant={activeSections.has(allControlsHeaderConfig.name) ? "secondary" : "ghost"}
+                    variant={(activeSections.has('all') || activeSections.size === controlPanelSections.length) && activeSections.size > 0 ? "secondary" : "ghost"}
                     size="icon"
                     onClick={() => handleSectionSelect(allControlsHeaderConfig.name)}
                     aria-pressed={activeSections.has(allControlsHeaderConfig.name)}
