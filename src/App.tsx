@@ -40,6 +40,8 @@ const App: React.FC = () => { // Added React.FC type
     const [savedRecordingIds, setSavedRecordingIds] = useState<string[]>([]); // State to list saved recordings
 
     const [playerInventory, setPlayerInventory] = useState<GameItem[]>([]); // State for player inventory
+    const lastFrameTimestamp = useRef<number | null>(null); // Moved declaration here
+
     // Initial stickman and animation setup
     useEffect(() => {
         const initialStickman: Stickman = {
@@ -563,7 +565,7 @@ const App: React.FC = () => { // Added React.FC type
     // Game loop / Update logic
     useEffect(() => {
         let frameId: number | undefined = undefined;
-        const lastFrameTimestamp = useRef<number | null>(null); // Moved declaration here
+        // const lastFrameTimestamp = useRef<number | null>(null); // Original position
 
         if (animationState.isPlaying) {
             const loop = (timestamp: number) => {
@@ -584,7 +586,6 @@ const App: React.FC = () => { // Added React.FC type
                 });
                 frameId = requestAnimationFrame(loop);
             };
-            // const lastFrameTimestamp = React.useRef<number | null>(null); // Original position
             frameId = requestAnimationFrame(loop);
         }
         return () => {
@@ -1076,3 +1077,4 @@ const App: React.FC = () => { // Added React.FC type
 }
 
 export default App;
+
