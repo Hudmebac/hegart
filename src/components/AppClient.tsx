@@ -13,7 +13,7 @@ import { PreviewCanvas } from '@/components/canvas/PreviewCanvas';
 import { ImageUploadControl } from '@/components/controls/ImageUploadControl';
 import { DrawingCanvas } from './canvas/DrawingCanvas';
 
-import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
+import { Sidebar, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ThemeToggle from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
@@ -36,6 +36,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
 
 
 export interface SymmetrySettings {
@@ -117,6 +118,9 @@ const initialTextSettings: TextSettings = {
 };
 const initialCanvasViewTransform: CanvasViewTransform = { pan: { x: 0, y: 0 }, zoom: 1 };
 
+const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_ICON = "3rem";
+
 
 export default function AppClient() {
   const [paths, setPaths] = useState<Path[]>([]);
@@ -136,7 +140,7 @@ export default function AppClient() {
     return {
       ...initialDrawingToolsBase,
       strokeColor: isDarkMode ? '#FFFFFF' : '#000000',
-      fillColor: isDarkMode ? '#FFFFFF40' : '#00000040', // Default semi-transparent fill
+      fillColor: isDarkMode ? '#FFFFFF40' : '#00000040', 
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     };
   });
@@ -148,7 +152,7 @@ export default function AppClient() {
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
-  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>()); // Default to no sections active
+  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>()); 
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
 
@@ -184,7 +188,7 @@ export default function AppClient() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
-      const parentElement = canvas.parentElement;
+      const parentElement = canvas.parentElement?.parentElement; // The main tag is parent.parentElement
       if (!parentElement) return;
 
       const observer = new ResizeObserver(() => {
@@ -201,7 +205,6 @@ export default function AppClient() {
   }, []);
 
   useEffect(() => {
-    // Show welcome dialog on initial mount
     setShowWelcomeDialog(true);
   }, []);
 
@@ -356,16 +359,7 @@ export default function AppClient() {
         return;
       }
       
-      // Save the current view, not just the initial 800x600 or scaled main canvas
       const { pan, zoom } = canvasViewTransform;
-      const worldWidth = mainCanvasDimensions.width / zoom; // effective world width visible
-      const worldHeight = mainCanvasDimensions.height / zoom; // effective world height visible
-      const worldX = -pan.x / zoom; // world top-left X
-      const worldY = -pan.y / zoom; // world top-left Y
-
-      // For simplicity, let's save the current viewport as rendered.
-      // If we want to save the "entire" drawing regardless of pan/zoom, it's more complex.
-      // For now, save what's visible on the main canvas.
       const saveWidth = Math.max(1, mainCanvasDimensions.width);
       const saveHeight = Math.max(1, mainCanvasDimensions.height);
       tempCanvas.width = saveWidth;
@@ -374,7 +368,6 @@ export default function AppClient() {
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-      // Apply the same view transform to the save canvas
       tempCtx.translate(pan.x, pan.y);
       tempCtx.scale(zoom, zoom);
 
@@ -398,7 +391,7 @@ export default function AppClient() {
 
           if (lineWidth > 0) {
             ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = lineWidth; // Note: lineWidth here is world lineWidth, it will be scaled by zoom
+            ctx.lineWidth = lineWidth; 
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             ctx.stroke();
@@ -406,7 +399,7 @@ export default function AppClient() {
       };
       
       const initialWorldCenterForSymmetry = {
-        x: mainCanvasDimensions.width / 2, // Using initial dimensions as symmetry center
+        x: mainCanvasDimensions.width / 2, 
         y: mainCanvasDimensions.height / 2
       };
 
@@ -418,15 +411,14 @@ export default function AppClient() {
         }
 
         const ctx = tempCtx;
-        // const canvas = tempCanvas; // tempCanvas is already in view transform space
-        const centerX = initialWorldCenterForSymmetry.x; // Symmetry center in world coords
+        const centerX = initialWorldCenterForSymmetry.x; 
         const centerY = initialWorldCenterForSymmetry.y;
         const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
 
         for (let i = 0; i < numAxes; i++) {
           const angle = (i * 2 * Math.PI) / numAxes;
           const transformPoint = (p: Point): Point => {
-            let { x, y } = p; // p is in world coordinates
+            let { x, y } = p; 
              if (numAxes > 1) {
                const translatedX = x - centerX;
                const translatedY = y - centerY;
@@ -442,7 +434,6 @@ export default function AppClient() {
           drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
 
           if (symmetry.mirrorX) {
-            // Mirroring in world space, around the initialWorldCenterForSymmetry.x * 2 - p.x
             const mirroredXPath = originalPath.points.map(p => ({x: 2 * centerX - p.x, y: p.y})).map(transformPoint);
             drawStaticPath(ctx, mirroredXPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
@@ -463,20 +454,16 @@ export default function AppClient() {
           const img = new window.Image();
           img.onload = () => {
             const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
-            const canvasCenterX = initialWorldCenterForSymmetry.x; // World coords
+            const canvasCenterX = initialWorldCenterForSymmetry.x; 
             const canvasCenterY = initialWorldCenterForSymmetry.y;
 
             for (let i = 0; i < numAxes; i++) {
                 const rotationAngle = (i * 2 * Math.PI) / numAxes;
-                // imgData.x,y,width,height are in world coordinates
                 const applyTransformAndDraw = (currentX: number, currentY: number, currentWidth: number, currentHeight: number, scaleX: number = 1, scaleY: number = 1) => {
                     tempCtx.save();
-                    // Translate to rotation center (world), rotate, translate back
                     tempCtx.translate(canvasCenterX, canvasCenterY);
                     tempCtx.rotate(rotationAngle);
                     tempCtx.translate(-canvasCenterX, -canvasCenterY);
-
-                    // Translate to image's anchor point (top-left), apply local scale, draw
                     tempCtx.translate(currentX + (scaleX === -1 ? currentWidth : 0) , currentY + (scaleY === -1 ? currentHeight : 0));
                     tempCtx.scale(scaleX, scaleY);
                     tempCtx.drawImage(img, 0, 0, currentWidth, currentHeight);
@@ -498,15 +485,15 @@ export default function AppClient() {
           };
           img.onerror = (err) => {
             console.error("Error loading image for save:", imgData.src, err);
-            resolve(); // Continue saving other elements
+            resolve(); 
           };
           img.src = imgData.src;
         });
       });
 
       texts.forEach(textData => {
-        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline, isFixedShape } = textData; // x,y are world
-        tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`; // fontSize is world size
+        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline, isFixedShape } = textData; 
+        tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`; 
         tempCtx.fillStyle = color;
         tempCtx.textAlign = textAlign;
         tempCtx.textBaseline = textBaseline;
@@ -522,11 +509,9 @@ export default function AppClient() {
 
         for (let i = 0; i < numAxes; i++) {
             const angle = (i * 2 * Math.PI) / numAxes;
-
             const transformAndDrawText = (originX: number, originY: number, applyMirrorX: boolean, applyMirrorY: boolean) => {
                 let worldDrawX = originX;
                 let worldDrawY = originY;
-
                 if (applyMirrorX) worldDrawX = 2 * canvasCenterX - originX;
                 if (applyMirrorY) worldDrawY = 2 * canvasCenterY - originY;
                 
@@ -534,9 +519,6 @@ export default function AppClient() {
                 tempCtx.translate(canvasCenterX, canvasCenterY);
                 tempCtx.rotate(angle);
                 tempCtx.translate(-canvasCenterX, -canvasCenterY);
-                
-                // The text content itself isn't mirrored, just its position.
-                // If actual text mirroring is needed, more complex ctx.scale(-1,1) before fillText is required.
                 tempCtx.fillText(text, worldDrawX, worldDrawY);
                 tempCtx.restore();
             };
@@ -547,7 +529,6 @@ export default function AppClient() {
             if (symmetry.mirrorX && symmetry.mirrorY) transformAndDrawText(x, y, true, true);
         }
     });
-
 
       try {
         await Promise.all(imageLoadPromises);
@@ -569,7 +550,6 @@ export default function AppClient() {
     setAnimation(initialAnimationSettings);
     setTextSettings(initialTextSettings);
     setCanvasViewTransform(initialCanvasViewTransform);
-
 
     const currentThemeResolved = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentThemeResolved === 'dark';
@@ -642,7 +622,7 @@ export default function AppClient() {
     const newPinnedState = !isSidebarPinned;
     setIsSidebarPinned(newPinnedState);
     if (newPinnedState) {
-      setIsSidebarHovered(false);
+      setIsSidebarHovered(false); // Ensure hover doesn't interfere when pinning
     }
   };
 
@@ -667,7 +647,6 @@ export default function AppClient() {
     let newSectionsSize = 0;
     setActiveSections(prevActiveSections => {
         const newActive = new Set(prevActiveSections);
-
         if (sectionName === 'all') {
             if (newActive.has('all')) { 
                 newActive.clear(); 
@@ -676,7 +655,7 @@ export default function AppClient() {
                 newActive.add('all');
             }
         } else { 
-            newActive.delete('all'); // Remove 'all' if an individual section is clicked
+            newActive.delete('all'); 
             if (newActive.has(sectionName)) { 
                 newActive.delete(sectionName as ControlSectionId); 
             } else { 
@@ -690,14 +669,8 @@ export default function AppClient() {
     if (isMobile) {
         if (newSectionsSize > 0) {
             setIsMobileSidebarOpen(true);
-        } else {
-            // Only close if explicitly all sections are deselected on mobile
-            // Or if 'all' was active and then deselected.
-             if (activeSections.has('all') && sectionName === 'all' && !new Set(activeSections).has('all')) {
-                setIsMobileSidebarOpen(false);
-             } else if (newSectionsSize === 0) {
-                setIsMobileSidebarOpen(false);
-             }
+        } else if (newSectionsSize === 0 && activeSections.size > 0) { // only close if it *was* open due to sections
+           setIsMobileSidebarOpen(false);
         }
     }
   };
@@ -708,33 +681,18 @@ export default function AppClient() {
 
   const handleManualZoom = (direction: 'in' | 'out') => {
     if (mainCanvasDimensions.width === 0 || mainCanvasDimensions.height === 0) return;
-
     const scaleFactor = direction === 'in' ? 1.2 : 1 / 1.2;
     const newZoom = Math.max(0.1, Math.min(canvasViewTransform.zoom * scaleFactor, 10));
-
-    const centerX = mainCanvasDimensions.width / 2; // Screen center of the canvas element
+    const centerX = mainCanvasDimensions.width / 2; 
     const centerY = mainCanvasDimensions.height / 2;
-
-    // World coordinates of the current screen center
     const worldCenterX = (centerX - canvasViewTransform.pan.x) / canvasViewTransform.zoom;
     const worldCenterY = (centerY - canvasViewTransform.pan.y) / canvasViewTransform.zoom;
-
-    // New pan to keep the same world point at the screen center
     const newPanX = centerX - worldCenterX * newZoom;
     const newPanY = centerY - worldCenterY * newZoom;
-    
     setCanvasViewTransform({ pan: { x: newPanX, y: newPanY }, zoom: newZoom });
   };
 
   const handleResetView = () => {
-    if (mainCanvasDimensions.width === 0 || mainCanvasDimensions.height === 0) {
-       setCanvasViewTransform(initialCanvasViewTransform); // Reset to default if canvas not ready
-       return;
-    }
-    // Calculate pan to center the initial world origin (0,0) if desired,
-    // or center based on current content bounding box (more complex).
-    // For simplicity, just reset to initial pan/zoom.
-    // If we want to center the content, we'd need to calculate bounds of all drawn items.
     setCanvasViewTransform(initialCanvasViewTransform);
   };
 
@@ -840,21 +798,22 @@ export default function AppClient() {
     return <div className="space-y-4">{componentsToRender}</div>;
   };
 
-  const sidebarActualOpenState = (activeSections.size > 0) &&
-                                 (isMobile ? isMobileSidebarOpen : (isSidebarPinned || isSidebarHovered));
+  const sidebarActualOpenState = (activeSections.size > 0) && (isMobile ? isMobileSidebarOpen : (isSidebarPinned || isSidebarHovered));
+  const sidebarIsVisuallyExpanded = sidebarActualOpenState && (isMobile || isSidebarPinned || isSidebarHovered);
 
-  const sidebarOnOpenChangeHandler = isMobile
-    ? setIsMobileSidebarOpen
-    : (newOpenState: boolean) => {
-        if (!isMobile) {
-          if (!newOpenState && isSidebarPinned && activeSections.size > 0) { // Only unpin if user explicitly collapses
+
+  const sidebarOnOpenChangeHandler = (newOpenState: boolean) => {
+    if (isMobile) {
+        setIsMobileSidebarOpen(newOpenState);
+    } else {
+        // For desktop, this function might be called by the Sidebar component itself if it has internal collapse triggers.
+        // We primarily control desktop visibility via isSidebarPinned and isSidebarHovered.
+        // If it's being closed and it was pinned, unpin it.
+        if (!newOpenState && isSidebarPinned) {
             setIsSidebarPinned(false);
-          } else if (newOpenState && !isSidebarPinned && activeSections.size > 0) { // If sidebar is opened by hover/programmatically and not pinned
-             // No automatic pinning, rely on hover or explicit pin action
-          }
         }
-      };
-
+    }
+  };
 
   useEffect(() => {
     if (isMobile && activeSections.size === 0 && isMobileSidebarOpen) {
@@ -862,9 +821,15 @@ export default function AppClient() {
     }
   }, [activeSections, isMobileSidebarOpen, isMobile]);
 
+  // CSS variables for dynamic padding
+  const mainContentStyle = {
+    "--sidebar-width": SIDEBAR_WIDTH,
+    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+  } as React.CSSProperties;
+
 
   return (
-    <SidebarProvider defaultOpen={sidebarActualOpenState}>
+    <SidebarProvider defaultOpen={isSidebarPinned || (activeSections.size > 0 && isSidebarHovered)}>
        <TooltipProvider>
         <Dialog open={showWelcomeDialog} onOpenChange={setShowWelcomeDialog}>
           <DialogContent className="sm:max-w-md">
@@ -887,8 +852,8 @@ export default function AppClient() {
           </DialogContent>
         </Dialog>
 
-      <div className="flex h-screen w-full flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background px-4 gap-2">
+      <div className="flex h-screen w-full flex-col" style={mainContentStyle}>
+        <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b bg-background px-4 gap-2">
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="md:hidden" onClick={toggleMobileSidebar}>
               <Menu className="h-6 w-6" />
@@ -969,10 +934,10 @@ export default function AppClient() {
         </header>
         <div className="flex flex-1 overflow-hidden relative">
           <Sidebar
-            className="border-r z-10"
-            collapsible={isMobile ? "none" : "icon"}
-            open={sidebarActualOpenState}
-            onOpenChange={sidebarOnOpenChangeHandler}
+            className="border-r z-40" // Ensure sidebar visual is above canvas but potentially below modals
+            collapsible={isMobile ? "none" : "icon"} // "icon" for desktop collapse to icons
+            open={sidebarActualOpenState} // Controls if sidebar is 'expanded' or 'collapsed' state for its internal styling
+            onOpenChange={sidebarOnOpenChangeHandler} // For mobile sheet primarily
             side="left"
             onMouseEnter={() => {
               if (!isMobile && !isSidebarPinned && activeSections.size > 0) { 
@@ -987,7 +952,7 @@ export default function AppClient() {
           >
             <ScrollArea className="h-full">
                <SidebarContent className="p-0">
-                 {sidebarActualOpenState && ( // Only render content wrapper if sidebar should be open
+                 {sidebarIsVisuallyExpanded && ( 
                     <div className="p-4 space-y-4">
                       {renderActiveSectionContent()}
                     </div>
@@ -995,7 +960,14 @@ export default function AppClient() {
               </SidebarContent>
             </ScrollArea>
           </Sidebar>
-          <SidebarInset className="flex-1 overflow-auto p-0">
+          
+          <main className={cn(
+              "flex-1 overflow-auto p-0 relative h-full transition-[padding-left] duration-200 ease-linear",
+              !isMobile && isSidebarPinned && sidebarIsVisuallyExpanded && activeSections.size > 0 ? "pl-[var(--sidebar-width)]" : "",
+              !isMobile && isSidebarPinned && (!sidebarIsVisuallyExpanded || activeSections.size === 0) ? "pl-[var(--sidebar-width-icon)]" : ""
+              // When unpinned (!isSidebarPinned), padding-left is 0 (default), allowing sidebar to overlay.
+            )}
+          >
              <div className="relative w-full h-full overflow-hidden">
                 <DrawingCanvas
                   ref={canvasRef}
@@ -1021,7 +993,6 @@ export default function AppClient() {
                   onCanvasViewTransformChange={handleCanvasViewTransformChange}
                   initialMainCanvasDimensions={mainCanvasDimensions}
                 />
-                {/* Canvas Pan/Zoom Controls Overlay */}
                 <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1 bg-background/50 p-1 rounded-md shadow-md">
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -1049,7 +1020,7 @@ export default function AppClient() {
                     </Tooltip>
                 </div>
              </div>
-          </SidebarInset>
+          </main>
           {isPreviewVisible && (
             <div className="absolute top-4 right-4 z-30 w-[clamp(250px,25vw,400px)] h-[clamp(150px,20vw,300px)] bg-card border-2 border-primary shadow-2xl rounded-lg p-1 overflow-hidden">
               <PreviewCanvas
@@ -1067,4 +1038,3 @@ export default function AppClient() {
     </SidebarProvider>
   );
 }
-
