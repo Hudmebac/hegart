@@ -4,8 +4,8 @@ import { montserrat } from '@/lib/fonts';
 import './globals.css';
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import { Button } from "@/components/ui/button"; // Keep for footer if needed, or remove if not.
-import Link from 'next/link'; // Keep for footer if needed, or remove if not.
+import { Button } from "@/components/ui/button";
+import Link from 'next/link';
 
 
 export const metadata: Metadata = {
@@ -30,9 +30,8 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* Header removed from here, AppClient.tsx will manage its own header */}
           {children}
-          <footer className="flex flex-col sm:flex-row justify-center items-center p-4 w-full text-center sm:text-left text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
+          <footer className="flex flex-col sm:flex-row sm:justify-end items-end sm:items-center p-4 w-full text-right text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
             <div className="flex items-center gap-4">
               <p>#HegArt © 2025 Craig Heggie. All rights reserved.</p>
               <a href="https://heggie.netlify.app/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
