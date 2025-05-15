@@ -2,7 +2,7 @@
 "use client";
 
 import type { Point, Path, CanvasImage, ShapeType, CanvasText } from "@/types/drawing";
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { SymmetryControl } from '@/components/controls/SymmetrySettings';
 import { AnimationControl } from '@/components/controls/AnimationSettings';
@@ -19,7 +19,7 @@ import ThemeToggle from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle, ZoomIn, ZoomOut, RefreshCw as ResetViewIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -85,6 +85,11 @@ interface CanvasHistoryState {
   texts: CanvasText[];
 }
 
+export interface CanvasViewTransform {
+  pan: { x: number, y: number };
+  zoom: number;
+}
+
 type ControlSectionId = 'actions' | 'shapes' | 'tools' | 'image' | 'symmetry' | 'animation';
 type HeaderControlSelectionId = ControlSectionId | 'all';
 
@@ -110,6 +115,7 @@ const initialTextSettings: TextSettings = {
   textAlign: 'left',
   textBaseline: 'top',
 };
+const initialCanvasViewTransform: CanvasViewTransform = { pan: { x: 0, y: 0 }, zoom: 1 };
 
 
 export default function AppClient() {
@@ -150,6 +156,8 @@ export default function AppClient() {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mainCanvasDimensions, setMainCanvasDimensions] = useState({ width: 800, height: 600 });
+  const [canvasViewTransform, setCanvasViewTransform] = useState<CanvasViewTransform>(initialCanvasViewTransform);
+
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -347,14 +355,29 @@ export default function AppClient() {
         toast({ variant: "destructive", title: "Error", description: "Could not create save context." });
         return;
       }
+      
+      // Save the current view, not just the initial 800x600 or scaled main canvas
+      const { pan, zoom } = canvasViewTransform;
+      const worldWidth = mainCanvasDimensions.width / zoom; // effective world width visible
+      const worldHeight = mainCanvasDimensions.height / zoom; // effective world height visible
+      const worldX = -pan.x / zoom; // world top-left X
+      const worldY = -pan.y / zoom; // world top-left Y
 
+      // For simplicity, let's save the current viewport as rendered.
+      // If we want to save the "entire" drawing regardless of pan/zoom, it's more complex.
+      // For now, save what's visible on the main canvas.
       const saveWidth = Math.max(1, mainCanvasDimensions.width);
       const saveHeight = Math.max(1, mainCanvasDimensions.height);
       tempCanvas.width = saveWidth;
       tempCanvas.height = saveHeight;
-
+      
       tempCtx.fillStyle = tools.backgroundColor;
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Apply the same view transform to the save canvas
+      tempCtx.translate(pan.x, pan.y);
+      tempCtx.scale(zoom, zoom);
+
 
       const drawStaticPath = (ctx: CanvasRenderingContext2D, pathPoints: Point[], strokeColor: string, lineWidth: number, fillColor?: string) => {
           if (pathPoints.length < 1) return;
@@ -375,12 +398,18 @@ export default function AppClient() {
 
           if (lineWidth > 0) {
             ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = lineWidth;
+            ctx.lineWidth = lineWidth; // Note: lineWidth here is world lineWidth, it will be scaled by zoom
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             ctx.stroke();
           }
       };
+      
+      const initialWorldCenterForSymmetry = {
+        x: mainCanvasDimensions.width / 2, // Using initial dimensions as symmetry center
+        y: mainCanvasDimensions.height / 2
+      };
+
 
       const drawStaticSymmetricPathOrFixed = (originalPath: Path) => {
         if (originalPath.isFixedShape) {
@@ -389,15 +418,15 @@ export default function AppClient() {
         }
 
         const ctx = tempCtx;
-        const canvas = tempCanvas;
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        // const canvas = tempCanvas; // tempCanvas is already in view transform space
+        const centerX = initialWorldCenterForSymmetry.x; // Symmetry center in world coords
+        const centerY = initialWorldCenterForSymmetry.y;
         const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
 
         for (let i = 0; i < numAxes; i++) {
           const angle = (i * 2 * Math.PI) / numAxes;
           const transformPoint = (p: Point): Point => {
-            let { x, y } = p;
+            let { x, y } = p; // p is in world coordinates
              if (numAxes > 1) {
                const translatedX = x - centerX;
                const translatedY = y - centerY;
@@ -413,15 +442,16 @@ export default function AppClient() {
           drawStaticPath(ctx, baseTransformedPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
 
           if (symmetry.mirrorX) {
-            const mirroredXPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: p.y})).map(transformPoint);
+            // Mirroring in world space, around the initialWorldCenterForSymmetry.x * 2 - p.x
+            const mirroredXPath = originalPath.points.map(p => ({x: 2 * centerX - p.x, y: p.y})).map(transformPoint);
             drawStaticPath(ctx, mirroredXPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
           if (symmetry.mirrorY) {
-             const mirroredYPath = originalPath.points.map(p => ({x: p.x, y: canvas.height - p.y})).map(transformPoint);
+             const mirroredYPath = originalPath.points.map(p => ({x: p.x, y: 2 * centerY - p.y})).map(transformPoint);
              drawStaticPath(ctx, mirroredYPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
           if (symmetry.mirrorX && symmetry.mirrorY) {
-              const mirroredXYPath = originalPath.points.map(p => ({x: canvas.width - p.x, y: canvas.height - p.y})).map(transformPoint);
+              const mirroredXYPath = originalPath.points.map(p => ({x: 2 * centerX - p.x, y: 2 * centerY - p.y})).map(transformPoint);
               drawStaticPath(ctx, mirroredXYPath, originalPath.color, originalPath.lineWidth, originalPath.fillColor);
           }
         }
@@ -433,46 +463,50 @@ export default function AppClient() {
           const img = new window.Image();
           img.onload = () => {
             const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
-            const canvasCenterX = tempCanvas.width / 2;
-            const canvasCenterY = tempCanvas.height / 2;
+            const canvasCenterX = initialWorldCenterForSymmetry.x; // World coords
+            const canvasCenterY = initialWorldCenterForSymmetry.y;
 
             for (let i = 0; i < numAxes; i++) {
                 const rotationAngle = (i * 2 * Math.PI) / numAxes;
+                // imgData.x,y,width,height are in world coordinates
                 const applyTransformAndDraw = (currentX: number, currentY: number, currentWidth: number, currentHeight: number, scaleX: number = 1, scaleY: number = 1) => {
                     tempCtx.save();
+                    // Translate to rotation center (world), rotate, translate back
                     tempCtx.translate(canvasCenterX, canvasCenterY);
                     tempCtx.rotate(rotationAngle);
                     tempCtx.translate(-canvasCenterX, -canvasCenterY);
 
-                    tempCtx.translate(currentX + currentWidth / 2, currentY + currentHeight / 2);
+                    // Translate to image's anchor point (top-left), apply local scale, draw
+                    tempCtx.translate(currentX + (scaleX === -1 ? currentWidth : 0) , currentY + (scaleY === -1 ? currentHeight : 0));
                     tempCtx.scale(scaleX, scaleY);
-                    tempCtx.drawImage(img, -currentWidth / 2, -currentHeight / 2, currentWidth, currentHeight);
+                    tempCtx.drawImage(img, 0, 0, currentWidth, currentHeight);
                     tempCtx.restore();
                 };
+                
                 applyTransformAndDraw(imgData.x, imgData.y, imgData.width, imgData.height);
                 if (symmetry.mirrorX) {
-                    applyTransformAndDraw(tempCanvas.width - imgData.x - imgData.width, imgData.y, imgData.width, imgData.height, -1, 1);
+                    applyTransformAndDraw(2 * canvasCenterX - imgData.x - imgData.width, imgData.y, imgData.width, imgData.height, -1, 1);
                 }
                 if (symmetry.mirrorY) {
-                    applyTransformAndDraw(imgData.x, tempCanvas.height - imgData.y - imgData.height, imgData.width, imgData.height, 1, -1);
+                    applyTransformAndDraw(imgData.x, 2 * canvasCenterY - imgData.y - imgData.height, imgData.width, imgData.height, 1, -1);
                 }
                 if (symmetry.mirrorX && symmetry.mirrorY) {
-                    applyTransformAndDraw(tempCanvas.width - imgData.x - imgData.width, tempCanvas.height - imgData.y - imgData.height, imgData.width, imgData.height, -1, -1);
+                    applyTransformAndDraw(2 * canvasCenterX - imgData.x - imgData.width, 2 * canvasCenterY - imgData.y - imgData.height, imgData.width, imgData.height, -1, -1);
                 }
             }
             resolve();
           };
           img.onerror = (err) => {
             console.error("Error loading image for save:", imgData.src, err);
-            resolve();
+            resolve(); // Continue saving other elements
           };
           img.src = imgData.src;
         });
       });
 
       texts.forEach(textData => {
-        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline, isFixedShape } = textData;
-        tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+        const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline, isFixedShape } = textData; // x,y are world
+        tempCtx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`; // fontSize is world size
         tempCtx.fillStyle = color;
         tempCtx.textAlign = textAlign;
         tempCtx.textBaseline = textBaseline;
@@ -483,58 +517,27 @@ export default function AppClient() {
         }
 
         const numAxes = symmetry.rotationalAxes > 0 ? symmetry.rotationalAxes : 1;
-        const canvasCenterX = tempCanvas.width / 2;
-        const canvasCenterY = tempCanvas.height / 2;
+        const canvasCenterX = initialWorldCenterForSymmetry.x;
+        const canvasCenterY = initialWorldCenterForSymmetry.y;
 
         for (let i = 0; i < numAxes; i++) {
             const angle = (i * 2 * Math.PI) / numAxes;
 
             const transformAndDrawText = (originX: number, originY: number, applyMirrorX: boolean, applyMirrorY: boolean) => {
-                let tx = originX;
-                let ty = originY;
+                let worldDrawX = originX;
+                let worldDrawY = originY;
 
+                if (applyMirrorX) worldDrawX = 2 * canvasCenterX - originX;
+                if (applyMirrorY) worldDrawY = 2 * canvasCenterY - originY;
+                
                 tempCtx.save();
-
-                if (applyMirrorX) {
-                    tx = tempCanvas.width - tx;
-                }
-                if (applyMirrorY) {
-                    ty = tempCanvas.height - ty;
-                }
-
-                if (numAxes > 1) {
-                    tempCtx.translate(canvasCenterX, canvasCenterY);
-                    tempCtx.rotate(angle);
-                    tempCtx.translate(-canvasCenterX, -canvasCenterY);
-                }
-
-                let finalDrawX = tx;
-                let finalDrawY = ty;
-
-                if (numAxes > 1) {
-                    const translatedForRotX = originX - canvasCenterX;
-                    const translatedForRotY = originY - canvasCenterY;
-
-                    let pointToRotateX = originX;
-                    let pointToRotateY = originY;
-
-                    if(applyMirrorX) pointToRotateX = tempCanvas.width - originX;
-                    if(applyMirrorY) pointToRotateY = tempCanvas.height - originY;
-
-                    const tX = pointToRotateX - canvasCenterX;
-                    const tY = pointToRotateY - canvasCenterY;
-                    finalDrawX = tX * Math.cos(angle) - tY * Math.sin(angle) + canvasCenterX;
-                    finalDrawY = tX * Math.sin(angle) + tY * Math.cos(angle) + canvasCenterY;
-                } else {
-                    if(applyMirrorX) finalDrawX = tempCanvas.width - originX;
-                    if(applyMirrorY) finalDrawY = tempCanvas.height - originY;
-                     if(applyMirrorX && applyMirrorY){
-                        finalDrawX = tempCanvas.width - originX;
-                        finalDrawY = tempCanvas.height - originY;
-                    }
-                }
-
-                tempCtx.fillText(text, finalDrawX, finalDrawY);
+                tempCtx.translate(canvasCenterX, canvasCenterY);
+                tempCtx.rotate(angle);
+                tempCtx.translate(-canvasCenterX, -canvasCenterY);
+                
+                // The text content itself isn't mirrored, just its position.
+                // If actual text mirroring is needed, more complex ctx.scale(-1,1) before fillText is required.
+                tempCtx.fillText(text, worldDrawX, worldDrawY);
                 tempCtx.restore();
             };
 
@@ -559,12 +562,14 @@ export default function AppClient() {
         toast({ variant: "destructive", title: "Save Error", description: "Failed to process elements for saving." });
       }
     }
-  }, [canvasRef, paths, images, texts, tools.backgroundColor, symmetry, mainCanvasDimensions, toast]);
+  }, [canvasRef, paths, images, texts, tools.backgroundColor, symmetry, mainCanvasDimensions, toast, canvasViewTransform]);
 
   const handleResetSettings = useCallback(() => {
     setSymmetry(initialSymmetrySettings);
     setAnimation(initialAnimationSettings);
     setTextSettings(initialTextSettings);
+    setCanvasViewTransform(initialCanvasViewTransform);
+
 
     const currentThemeResolved = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentThemeResolved === 'dark';
@@ -671,15 +676,11 @@ export default function AppClient() {
                 newActive.add('all');
             }
         } else { 
-            if (newActive.has('all')) { 
-                newActive.clear(); 
-                newActive.add(sectionName as ControlSectionId); 
+            newActive.delete('all'); // Remove 'all' if an individual section is clicked
+            if (newActive.has(sectionName)) { 
+                newActive.delete(sectionName as ControlSectionId); 
             } else { 
-                if (newActive.has(sectionName)) { 
-                    newActive.delete(sectionName as ControlSectionId); 
-                } else { 
-                    newActive.add(sectionName as ControlSectionId); 
-                }
+                newActive.add(sectionName as ControlSectionId); 
             }
         }
         newSectionsSize = newActive.size;
@@ -690,9 +691,51 @@ export default function AppClient() {
         if (newSectionsSize > 0) {
             setIsMobileSidebarOpen(true);
         } else {
-            setIsMobileSidebarOpen(false);
+            // Only close if explicitly all sections are deselected on mobile
+            // Or if 'all' was active and then deselected.
+             if (activeSections.has('all') && sectionName === 'all' && !new Set(activeSections).has('all')) {
+                setIsMobileSidebarOpen(false);
+             } else if (newSectionsSize === 0) {
+                setIsMobileSidebarOpen(false);
+             }
         }
     }
+  };
+
+  const handleCanvasViewTransformChange = useCallback((newTransform: CanvasViewTransform) => {
+    setCanvasViewTransform(newTransform);
+  }, []);
+
+  const handleManualZoom = (direction: 'in' | 'out') => {
+    if (mainCanvasDimensions.width === 0 || mainCanvasDimensions.height === 0) return;
+
+    const scaleFactor = direction === 'in' ? 1.2 : 1 / 1.2;
+    const newZoom = Math.max(0.1, Math.min(canvasViewTransform.zoom * scaleFactor, 10));
+
+    const centerX = mainCanvasDimensions.width / 2; // Screen center of the canvas element
+    const centerY = mainCanvasDimensions.height / 2;
+
+    // World coordinates of the current screen center
+    const worldCenterX = (centerX - canvasViewTransform.pan.x) / canvasViewTransform.zoom;
+    const worldCenterY = (centerY - canvasViewTransform.pan.y) / canvasViewTransform.zoom;
+
+    // New pan to keep the same world point at the screen center
+    const newPanX = centerX - worldCenterX * newZoom;
+    const newPanY = centerY - worldCenterY * newZoom;
+    
+    setCanvasViewTransform({ pan: { x: newPanX, y: newPanY }, zoom: newZoom });
+  };
+
+  const handleResetView = () => {
+    if (mainCanvasDimensions.width === 0 || mainCanvasDimensions.height === 0) {
+       setCanvasViewTransform(initialCanvasViewTransform); // Reset to default if canvas not ready
+       return;
+    }
+    // Calculate pan to center the initial world origin (0,0) if desired,
+    // or center based on current content bounding box (more complex).
+    // For simplicity, just reset to initial pan/zoom.
+    // If we want to center the content, we'd need to calculate bounds of all drawn items.
+    setCanvasViewTransform(initialCanvasViewTransform);
   };
 
 
@@ -804,11 +847,14 @@ export default function AppClient() {
     ? setIsMobileSidebarOpen
     : (newOpenState: boolean) => {
         if (!isMobile) {
-          if (!newOpenState && isSidebarPinned && activeSections.size > 0) {
+          if (!newOpenState && isSidebarPinned && activeSections.size > 0) { // Only unpin if user explicitly collapses
             setIsSidebarPinned(false);
+          } else if (newOpenState && !isSidebarPinned && activeSections.size > 0) { // If sidebar is opened by hover/programmatically and not pinned
+             // No automatic pinning, rely on hover or explicit pin action
           }
         }
       };
+
 
   useEffect(() => {
     if (isMobile && activeSections.size === 0 && isMobileSidebarOpen) {
@@ -940,8 +986,8 @@ export default function AppClient() {
             }}
           >
             <ScrollArea className="h-full">
-              <SidebarContent className="p-0">
-                 {sidebarActualOpenState && (
+               <SidebarContent className="p-0">
+                 {sidebarActualOpenState && ( // Only render content wrapper if sidebar should be open
                     <div className="p-4 space-y-4">
                       {renderActiveSectionContent()}
                     </div>
@@ -971,7 +1017,37 @@ export default function AppClient() {
                   onImageSelect={handleImageSelect}
                   onImageUpdate={handleImageUpdate}
                   isFillModeActive={isFillModeActive}
+                  canvasViewTransform={canvasViewTransform}
+                  onCanvasViewTransformChange={handleCanvasViewTransformChange}
+                  initialMainCanvasDimensions={mainCanvasDimensions}
                 />
+                {/* Canvas Pan/Zoom Controls Overlay */}
+                <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1 bg-background/50 p-1 rounded-md shadow-md">
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="outline" size="icon" onClick={() => handleManualZoom('in')} className="h-8 w-8">
+                                <ZoomIn className="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left"><p>Zoom In</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="outline" size="icon" onClick={() => handleManualZoom('out')} className="h-8 w-8">
+                                <ZoomOut className="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left"><p>Zoom Out</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button variant="outline" size="icon" onClick={handleResetView} className="h-8 w-8">
+                                <ResetViewIcon className="h-4 w-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left"><p>Reset View</p></TooltipContent>
+                    </Tooltip>
+                </div>
              </div>
           </SidebarInset>
           {isPreviewVisible && (

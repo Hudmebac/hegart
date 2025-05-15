@@ -2,8 +2,8 @@
 "use client";
 
 import type { Point, Path, CanvasImage, CanvasText } from "@/types/drawing";
-import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, TextSettings } from "@/components/AppClient";
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import type { SymmetrySettings, AnimationSettings, DrawingTools, ShapeSettings, TextSettings, CanvasViewTransform } from "@/components/AppClient";
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, useMemo, WheelEvent as ReactWheelEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { drawShape } from './shapeUtils';
 
 interface DrawingCanvasProps {
@@ -25,34 +25,37 @@ interface DrawingCanvasProps {
   onImageSelect: (id: string | null) => void;
   onImageUpdate: (updatedImage: CanvasImage) => void;
   isFillModeActive: boolean; 
+  canvasViewTransform: CanvasViewTransform;
+  onCanvasViewTransformChange: (transform: CanvasViewTransform) => void;
+  initialMainCanvasDimensions: { width: number, height: number }; // For stable symmetry center
 }
 
-// Helper to transform a point based on symmetry settings
+// Helper to transform a point based on symmetry settings (operates in world coordinates)
 const transformSymmetricPoint = (
-    p: Point,
-    centerX: number,
-    centerY: number,
+    p: Point, // point in world coordinates
+    worldSymmetryCenterX: number,
+    worldSymmetryCenterY: number,
     baseAngle: number,
-    mirrorTargetWidth: number, 
-    mirrorTargetHeight: number, 
     applyMirrorX: boolean,
     applyMirrorY: boolean,
     isRotationalContext: boolean
 ): Point => {
-    let { x, y } = p;
+    let { x, y } = p; // world coordinates
 
-    if (applyMirrorX) x = mirrorTargetWidth - x;
-    if (applyMirrorY) y = mirrorTargetHeight - y;
+    // Mirroring is done first, relative to the world symmetry center
+    if (applyMirrorX) x = 2 * worldSymmetryCenterX - x; // Reflect across vertical line through worldSymmetryCenterX
+    if (applyMirrorY) y = 2 * worldSymmetryCenterY - y; // Reflect across horizontal line through worldSymmetryCenterY
     
     if (isRotationalContext) {
-        const translatedX = x - centerX;
-        const translatedY = y - centerY;
+        // Translate to origin (relative to worldSymmetryCenter), rotate, then translate back
+        const translatedX = x - worldSymmetryCenterX;
+        const translatedY = y - worldSymmetryCenterY;
         const cosA = Math.cos(baseAngle);
         const sinA = Math.sin(baseAngle);
         const rotatedX = translatedX * cosA - translatedY * sinA;
         const rotatedY = translatedX * sinA + translatedY * cosA;
-        x = rotatedX + centerX;
-        y = rotatedY + centerY;
+        x = rotatedX + worldSymmetryCenterX;
+        y = rotatedY + worldSymmetryCenterY;
     }
     return { x, y };
 };
@@ -78,14 +81,20 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     onImageSelect,
     onImageUpdate,
     isFillModeActive,
+    canvasViewTransform,
+    onCanvasViewTransformChange,
+    initialMainCanvasDimensions,
   }, ref) => {
     const internalCanvasRef = useRef<HTMLCanvasElement>(null);
     useImperativeHandle(ref, () => internalCanvasRef.current!);
 
     const [isDrawing, setIsDrawing] = useState(false);
     const [isDraggingImage, setIsDraggingImage] = useState(false);
-    const dragStartPointRef = useRef<{ x: number, y: number } | null>(null);
-    const imageStartPosRef = useRef<{ x: number, y: number } | null>(null);
+    const [isPanning, setIsPanning] = useState(false);
+    const lastPanPointRef = useRef<{ x: number, y: number } | null>(null);
+
+    const dragStartPointRef = useRef<{ x: number, y: number } | null>(null); // world coords
+    const imageStartPosRef = useRef<{ x: number, y: number } | null>(null); // world coords
     
     const animationFrameId = useRef<number | null>(null);
     const lastAnimationTime = useRef<number>(0);
@@ -95,6 +104,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     const lastSpinDirectionChangeTime = useRef<number>(0);
 
     const [loadedHtmlImages, setLoadedHtmlImages] = useState<Record<string, HTMLImageElement>>({});
+
+     const initialWorldCenter = useMemo(() => ({
+        x: initialMainCanvasDimensions.width / 2,
+        y: initialMainCanvasDimensions.height / 2,
+    }), [initialMainCanvasDimensions]);
+
 
     useEffect(() => {
         const promises: Promise<{id: string, img: HTMLImageElement}>[] = [];
@@ -145,84 +160,101 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     }, [images]);
 
 
-    const getCanvasCoordinates = (event: React.MouseEvent | React.TouchEvent): Point | null => {
+    const getCanvasCoordinates = (event: ReactMouseEvent | React.TouchEvent<HTMLCanvasElement>): Point | null => {
       if (!internalCanvasRef.current) return null;
       const canvas = internalCanvasRef.current;
       const rect = canvas.getBoundingClientRect();
-      let x, y;
+      let clientX, clientY;
       if ('touches' in event) {
          if (event.touches.length === 0) return null;
-         x = event.touches[0].clientX - rect.left;
-         y = event.touches[0].clientY - rect.top;
+         clientX = event.touches[0].clientX;
+         clientY = event.touches[0].clientY;
        } else {
-         x = event.clientX - rect.left;
-         y = event.clientY - rect.top;
+         clientX = event.clientX;
+         clientY = event.clientY;
        }
-      x = Math.max(0, Math.min(x, canvas.width));
-      y = Math.max(0, Math.min(y, canvas.height));
-      return { x, y };
+      
+      // Screen coordinates relative to canvas element
+      const screenX = clientX - rect.left;
+      const screenY = clientY - rect.top;
+
+      // Convert to world coordinates
+      const worldX = (screenX - canvasViewTransform.pan.x) / canvasViewTransform.zoom;
+      const worldY = (screenY - canvasViewTransform.pan.y) / canvasViewTransform.zoom;
+      
+      // Clamping in world space might be complex if the "world" is infinite.
+      // For now, let's assume drawing can happen outside initial bounds.
+      return { x: worldX, y: worldY };
     };
 
-    const handleFillAttempt = (clickPoint: Point) => {
+    const handleFillAttempt = (worldClickPoint: Point) => {
         if (!internalCanvasRef.current) return;
         const canvas = internalCanvasRef.current;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
         let filledPathIndex = -1;
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
         
+        // For checking isPointInPath, we need to apply the inverse view transform to the click point,
+        // or transform the path to screen coordinates. It's easier to transform the path to screen space temporarily.
+        // OR, ctx.isPointInPath operates on the current transformation matrix,
+        // so if we draw paths in world coords and apply view transform, it should work.
+        // The clickPoint is already in world coords.
+
         for (let i = paths.length - 1; i >= 0; i--) {
             const pathData = paths[i];
             if (pathData.points.length < 1) continue;
 
+            ctx.save(); // Save current state (which includes view transform)
+            ctx.beginPath();
+
             if (pathData.isFixedShape) { 
-                 ctx.beginPath();
+                 // Fixed shapes are drawn directly in world coordinates (relative to (0,0) of world)
+                 // but isPointInPath needs to respect the current view transform for the click.
                  ctx.moveTo(pathData.points[0].x, pathData.points[0].y);
                  for (let k = 1; k < pathData.points.length; k++) {
                      ctx.lineTo(pathData.points[k].x, pathData.points[k].y);
                  }
                  if (pathData.points.length > 2) ctx.closePath();
-                 if (ctx.isPointInPath(clickPoint.x, clickPoint.y)) {
+                 if (ctx.isPointInPath(worldClickPoint.x, worldClickPoint.y)) {
                      filledPathIndex = i;
-                     break;
                  }
-                 continue; 
-            }
-            
-            const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
-            for (let axisIdx = 0; axisIdx < numAxes; axisIdx++) {
-                const angle = (axisIdx * 2 * Math.PI) / numAxes;
-                const isRotContext = numAxes > 1;
+            } else {
+                const numAxes = symmetrySettings.rotationalAxes > 0 ? symmetrySettings.rotationalAxes : 1;
+                for (let axisIdx = 0; axisIdx < numAxes; axisIdx++) {
+                    const angle = (axisIdx * 2 * Math.PI) / numAxes;
+                    const isRotContext = numAxes > 1;
 
-                const mirrorsToTest = [
-                    { mx: false, my: false }, 
-                    ...(symmetrySettings.mirrorX ? [{ mx: true, my: false }] : []),
-                    ...(symmetrySettings.mirrorY ? [{ mx: false, my: true }] : []),
-                    ...(symmetrySettings.mirrorX && symmetrySettings.mirrorY ? [{ mx: true, my: true }] : []),
-                ];
-                
-                for (const mirror of mirrorsToTest) {
-                    ctx.beginPath();
-                    const firstTransformedPoint = transformSymmetricPoint(pathData.points[0], centerX, centerY, angle, canvas.width, canvas.height, mirror.mx, mirror.my, isRotContext);
-                    ctx.moveTo(firstTransformedPoint.x, firstTransformedPoint.y);
-                    for (let k = 1; k < pathData.points.length; k++) {
-                        const transformedPoint = transformSymmetricPoint(pathData.points[k], centerX, centerY, angle, canvas.width, canvas.height, mirror.mx, mirror.my, isRotContext);
-                        ctx.lineTo(transformedPoint.x, transformedPoint.y);
-                    }
+                    const mirrorsToTest = [
+                        { mx: false, my: false }, 
+                        ...(symmetrySettings.mirrorX ? [{ mx: true, my: false }] : []),
+                        ...(symmetrySettings.mirrorY ? [{ mx: false, my: true }] : []),
+                        ...(symmetrySettings.mirrorX && symmetrySettings.mirrorY ? [{ mx: true, my: true }] : []),
+                    ];
                     
-                    if (pathData.points.length > 2) ctx.closePath();
+                    for (const mirror of mirrorsToTest) {
+                        ctx.beginPath(); // Start new path for each symmetric instance
+                        const firstTransformedPoint = transformSymmetricPoint(pathData.points[0], initialWorldCenter.x, initialWorldCenter.y, angle, mirror.mx, mirror.my, isRotContext);
+                        ctx.moveTo(firstTransformedPoint.x, firstTransformedPoint.y);
+                        for (let k = 1; k < pathData.points.length; k++) {
+                            const transformedPoint = transformSymmetricPoint(pathData.points[k], initialWorldCenter.x, initialWorldCenter.y, angle, mirror.mx, mirror.my, isRotContext);
+                            ctx.lineTo(transformedPoint.x, transformedPoint.y);
+                        }
+                        
+                        if (pathData.points.length > 2) ctx.closePath();
 
-                    if (ctx.isPointInPath(clickPoint.x, clickPoint.y)) {
-                        filledPathIndex = i;
-                        break;
+                        if (ctx.isPointInPath(worldClickPoint.x, worldClickPoint.y)) {
+                            filledPathIndex = i;
+                            break; // Found in this mirror
+                        }
                     }
+                    if (filledPathIndex !== -1) break; // Found in this rotational axis
                 }
-                if (filledPathIndex !== -1) break;
             }
-            if (filledPathIndex !== -1) break;
+            ctx.restore(); // Restore to before path was made for hit-testing
+            if (filledPathIndex !== -1) break; // Found path
         }
+
 
         if (filledPathIndex !== -1) {
             onFillPath(filledPathIndex, drawingTools.fillColor);
@@ -231,51 +263,58 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
 
-    const startDrawing = (event: React.MouseEvent | React.TouchEvent) => {
-      if ('touches' in event) event.preventDefault();
-      const point = getCanvasCoordinates(event);
-      if (!point) return;
+    const startDrawing = (event: ReactMouseEvent | React.TouchEvent<HTMLCanvasElement>) => {
+      if ('button' in event && event.button === 1) { // Middle mouse for panning
+        handleMiddleMouseDown(event as ReactMouseEvent);
+        return;
+      }
+      if ('touches' in event && event.touches.length > 1) return; // Ignore multi-touch for drawing for now
+
+      event.preventDefault();
+      const worldPoint = getCanvasCoordinates(event);
+      if (!worldPoint) return;
 
       if (isFillModeActive) {
-        handleFillAttempt(point);
+        handleFillAttempt(worldPoint);
         return; 
       }
 
       if (shapeSettings.currentShape === 'text') {
-        if (textSettings.content.trim() === "") return; // Don't add empty text
+        if (textSettings.content.trim() === "") return; 
         const newTextObject: CanvasText = {
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             text: textSettings.content,
-            x: point.x,
-            y: point.y,
+            x: worldPoint.x, // Store world coordinates
+            y: worldPoint.y,
             fontFamily: textSettings.fontFamily,
-            fontSize: textSettings.fontSize,
+            fontSize: textSettings.fontSize, // fontSize is in world units
             fontWeight: textSettings.fontWeight,
             fontStyle: textSettings.fontStyle,
             textAlign: textSettings.textAlign,
             textBaseline: textSettings.textBaseline,
-            color: drawingTools.strokeColor, // Use strokeColor for text color
+            color: drawingTools.strokeColor,
             isFixedShape: shapeSettings.isFixedShape,
             excludeFromAnimation: shapeSettings.excludeFromAnimation,
         };
         onTextAdd(newTextObject);
         onImageSelect(null);
-        setIsDrawing(false); // Text is placed on click, no dragging to draw
+        setIsDrawing(false); 
         return;
       }
       
+      // Check for image click (images are in world coords)
       for (let i = images.length - 1; i >= 0; i--) {
         const imgData = images[i];
         if (
-          point.x >= imgData.x &&
-          point.x <= imgData.x + imgData.width &&
-          point.y >= imgData.y &&
-          point.y <= imgData.y + imgData.height
+          worldPoint.x >= imgData.x &&
+          worldPoint.x <= imgData.x + imgData.width &&
+          worldPoint.y >= imgData.y &&
+          worldPoint.y <= imgData.y + imgData.height
         ) {
           onImageSelect(imgData.id);
           setIsDraggingImage(true);
-          dragStartPointRef.current = point;
-          imageStartPosRef.current = { x: imgData.x, y: imgData.y };
+          dragStartPointRef.current = worldPoint; // Store world coords
+          imageStartPosRef.current = { x: imgData.x, y: imgData.y }; // Store world coords
           setIsDrawing(false); 
           return;
         }
@@ -286,24 +325,30 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       }
 
       setIsDrawing(true);
-      onCurrentPathChange([point]);
+      onCurrentPathChange([worldPoint]); // Start path with world coords
     };
 
-    const draw = (event: React.MouseEvent | React.TouchEvent) => {
-      if ('touches' in event) event.preventDefault();
+    const draw = (event: ReactMouseEvent | React.TouchEvent<HTMLCanvasElement>) => {
+      if (isPanning) {
+        handleMiddleMouseMove(event as ReactMouseEvent);
+        return;
+      }
+      if ('touches' in event && event.touches.length > 1) return;
+      
+      event.preventDefault();
       if (isFillModeActive || shapeSettings.currentShape === 'text') return; 
 
-      const point = getCanvasCoordinates(event);
-      if (!point) return;
+      const worldPoint = getCanvasCoordinates(event);
+      if (!worldPoint) return;
 
       if (isDraggingImage && selectedImageId && dragStartPointRef.current && imageStartPosRef.current) {
         const draggedImage = images.find(img => img.id === selectedImageId);
         if (draggedImage) {
-          const dx = point.x - dragStartPointRef.current.x;
-          const dy = point.y - dragStartPointRef.current.y;
+          const dx = worldPoint.x - dragStartPointRef.current.x; // Delta in world coords
+          const dy = worldPoint.y - dragStartPointRef.current.y;
           onImageUpdate({
             ...draggedImage,
-            x: imageStartPosRef.current.x + dx,
+            x: imageStartPosRef.current.x + dx, // Update world coords
             y: imageStartPosRef.current.y + dy,
           });
         }
@@ -312,58 +357,113 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
       if (!isDrawing) return;
       if (shapeSettings.currentShape === 'freehand') {
-          onCurrentPathChange([...currentPath, point]);
+          onCurrentPathChange([...currentPath, worldPoint]); // Add world coords
       } else {
           if (currentPath.length > 0) {
-              onCurrentPathChange([currentPath[0], point]);
+              onCurrentPathChange([currentPath[0], worldPoint]); // Update end point with world coords
           }
       }
     };
 
     const finishDrawing = () => {
+      if (isPanning) {
+        handleMiddleMouseUp();
+        return;
+      }
       if (isFillModeActive || shapeSettings.currentShape === 'text') return; 
 
       if (isDraggingImage) {
         setIsDraggingImage(false);
         dragStartPointRef.current = null;
         imageStartPosRef.current = null;
-        // Here you might want to snapshot history for image drag completion
         return;
       }
 
       if (!isDrawing || currentPath.length === 0) return;
       setIsDrawing(false);
-      let finalPathPoints: Point[];
+      let finalPathPoints: Point[]; // These will be in world coordinates
       if (shapeSettings.currentShape !== 'freehand' && currentPath.length === 2) {
-          const canvas = internalCanvasRef.current;
-          if (!canvas) return;
-          finalPathPoints = drawShape(shapeSettings.currentShape, currentPath[0], currentPath[1], canvas.width, canvas.height);
+          // drawShape expects world coordinates for start/end
+          finalPathPoints = drawShape(shapeSettings.currentShape, currentPath[0], currentPath[1], initialMainCanvasDimensions.width, initialMainCanvasDimensions.height);
       } else {
           finalPathPoints = currentPath;
       }
        if (finalPathPoints.length >= (shapeSettings.currentShape === 'line' || shapeSettings.currentShape === 'arrow' || shapeSettings.currentShape === 'checkMark' ? 2 : 1)) {
           onPathAdd({ 
-            points: finalPathPoints,
+            points: finalPathPoints, // Store world coordinates
             color: drawingTools.strokeColor,
-            lineWidth: drawingTools.lineWidth,
+            lineWidth: drawingTools.lineWidth, // lineWidth is in world units
             fillColor: shapeSettings.currentShape !== 'freehand' && shapeSettings.currentShape !== 'line' && shapeSettings.currentShape !== 'arrow' && shapeSettings.currentShape !== 'checkMark' ? drawingTools.fillColor : undefined, 
           });
        }
       onCurrentPathChange([]);
     };
 
+    // Pan handlers
+    const handleMiddleMouseDown = (event: ReactMouseEvent) => {
+        if (event.button === 1) { // Middle mouse button
+            event.preventDefault();
+            setIsPanning(true);
+            lastPanPointRef.current = { x: event.clientX, y: event.clientY };
+        }
+    };
+    const handleMiddleMouseMove = (event: ReactMouseEvent) => {
+        if (!isPanning || !lastPanPointRef.current) return;
+        event.preventDefault();
+        const dx = event.clientX - lastPanPointRef.current.x;
+        const dy = event.clientY - lastPanPointRef.current.y;
+        onCanvasViewTransformChange({
+            ...canvasViewTransform,
+            pan: {
+                x: canvasViewTransform.pan.x + dx,
+                y: canvasViewTransform.pan.y + dy,
+            }
+        });
+        lastPanPointRef.current = { x: event.clientX, y: event.clientY };
+    };
+    const handleMiddleMouseUp = () => {
+        setIsPanning(false);
+        lastPanPointRef.current = null;
+    };
+
+    // Zoom handler
+    const handleWheel = (event: ReactWheelEvent<HTMLCanvasElement>) => {
+        event.preventDefault();
+        if (!internalCanvasRef.current) return;
+        const canvas = internalCanvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        
+        const scaleAmount = 1.1;
+        const newZoomNoClamp = event.deltaY < 0 ? canvasViewTransform.zoom * scaleAmount : canvasViewTransform.zoom / scaleAmount;
+        const newZoom = Math.max(0.1, Math.min(newZoomNoClamp, 10));
+
+        const mouseX = event.clientX - rect.left; // Screen X relative to canvas element
+        const mouseY = event.clientY - rect.top;   // Screen Y relative to canvas element
+
+        // World coordinates under the mouse cursor BEFORE zoom
+        const worldXBefore = (mouseX - canvasViewTransform.pan.x) / canvasViewTransform.zoom;
+        const worldYBefore = (mouseY - canvasViewTransform.pan.y) / canvasViewTransform.zoom;
+
+        // New pan to keep the same world point under the mouse cursor AFTER zoom
+        const newPanX = mouseX - worldXBefore * newZoom;
+        const newPanY = mouseY - worldYBefore * newZoom;
+
+        onCanvasViewTransformChange({ pan: { x: newPanX, y: newPanY }, zoom: newZoom });
+    };
+
+
     const drawSinglePath = (
         ctx: CanvasRenderingContext2D, 
-        pathPoints: Point[], 
+        pathPoints: Point[], // World coordinates
         strokeColor: string, 
-        lineWidth: number, 
-        currentLineWidthOffset: number,
+        lineWidth: number, // World units
+        currentLineWidthOffset: number, // World units offset
         fillColor?: string | null 
     ) => {
       if (pathPoints.length === 0) return;
-      const effectiveLineWidth = lineWidth + currentLineWidthOffset;
+      const effectiveLineWidth = lineWidth + currentLineWidthOffset; // World units
       
-      if (effectiveLineWidth < 0.1 && !fillColor) return;
+      if (effectiveLineWidth < (0.1 / canvasViewTransform.zoom) && !fillColor) return; // Adjust min visible line width based on zoom
 
       ctx.beginPath();
       ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
@@ -383,9 +483,9 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         ctx.fill();
       }
 
-      if (effectiveLineWidth >= 0.1) { 
+      if (effectiveLineWidth >= (0.1 / canvasViewTransform.zoom) ) { 
         ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = effectiveLineWidth;
+        ctx.lineWidth = effectiveLineWidth; // This is in world units, canvas transform handles scaling
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
@@ -393,29 +493,28 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
     };
 
     const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
-        if (path.length !== 2) return;
+        if (path.length !== 2) return; // Path is in world coordinates
         ctx.beginPath();
         ctx.moveTo(path[0].x, path[0].y);
         ctx.lineTo(path[1].x, path[1].y);
         ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, lineWidth * 0.5); 
-        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = Math.max(1 / canvasViewTransform.zoom, lineWidth * 0.5);  // Adjust dash preview based on zoom
+        ctx.setLineDash([5 / canvasViewTransform.zoom, 5 / canvasViewTransform.zoom]);
         ctx.stroke();
         ctx.setLineDash([]);
     };
 
     const drawSymmetricImage = (
         ctx: CanvasRenderingContext2D,
-        canvas: HTMLCanvasElement,
         htmlImg: HTMLImageElement,
-        imgData: CanvasImage,
+        imgData: CanvasImage, // Contains world coordinates x,y,width,height
         currentSymmetry: SymmetrySettings,
         isSelected: boolean
      ) => {
-        const { x, y, width, height } = imgData;
+        const { x, y, width, height } = imgData; // World coords and dimensions
         const numAxes = currentSymmetry.rotationalAxes > 0 ? currentSymmetry.rotationalAxes : 1;
-        const canvasCenterX = canvas.width / 2;
-        const canvasCenterY = canvas.height / 2;
+        const canvasCenterX = initialWorldCenter.x; // Symmetry center in world coords
+        const canvasCenterY = initialWorldCenter.y;
         const isRotContext = numAxes > 1;
 
         for (let i = 0; i < numAxes; i++) {
@@ -426,75 +525,82 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             if (currentSymmetry.mirrorX && currentSymmetry.mirrorY) mirrorsToApply.push({ mx: true, my: true });
             
             for (const mirror of mirrorsToApply) {
-                ctx.save();
+                ctx.save(); // Save context that already has view transform + anim transform
+                
+                // Apply symmetry transform (rotation around world center, then local mirror if any)
+                // All these operations are on top of the current (world-transformed) context
+                let worldDrawX = x;
+                let worldDrawY = y;
+                let scaleFactorX = 1;
+                let scaleFactorY = 1;
+
+                if (mirror.mx) {
+                    worldDrawX = 2 * canvasCenterX - x - width; // Mirroring the top-left corner
+                    scaleFactorX = -1;
+                }
+                if (mirror.my) {
+                    worldDrawY = 2 * canvasCenterY - y - height; // Mirroring the top-left corner
+                    scaleFactorY = -1;
+                }
+
+                // Rotation around world symmetry center
                 if (isRotContext) {
                     ctx.translate(canvasCenterX, canvasCenterY);
                     ctx.rotate(rotationAngle);
                     ctx.translate(-canvasCenterX, -canvasCenterY);
                 }
-                let drawX = x;
-                let drawY = y;
-                let scaleX = 1;
-                let scaleY = 1;
-                if (mirror.mx) {
-                    drawX = canvas.width - x - width; 
-                    scaleX = -1;
-                }
-                if (mirror.my) {
-                    drawY = canvas.height - y - height; 
-                    scaleY = -1;
-                }
-                ctx.translate(drawX + (scaleX === 1 ? 0 : width), drawY + (scaleY === 1 ? 0 : height));
-                ctx.scale(scaleX, scaleY);
-                ctx.drawImage(htmlImg, 0, 0, width, height);
+                
+                // Translate to mirrored/rotated position, apply scale for mirroring, draw
+                ctx.translate(worldDrawX + (scaleFactorX === -1 ? width : 0), worldDrawY + (scaleFactorY === -1 ? height : 0));
+                ctx.scale(scaleFactorX, scaleFactorY);
+                ctx.drawImage(htmlImg, 0, 0, width, height); // Draw at (0,0) of this new local context
                 
                 if (isSelected && i === 0 && !mirror.mx && !mirror.my) { 
+                    // Selection outline in local image space (0,0,width,height)
                     ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
-                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1;
-                    ctx.lineWidth = 2 / globalScale; 
-                    ctx.setLineDash([4 / globalScale, 2 / globalScale]);
-                    ctx.strokeRect(0 - 2, 0 - 2, width + 4, height + 4);
+                    const globalScale = animationSettings.isScaling ? (1 + Math.sin(0) * animationSettings.scaleIntensity) : 1; // Global anim scale
+                    const selectionLineWidth = 2 / (canvasViewTransform.zoom * globalScale); // Adjust for view and anim zoom
+                    ctx.lineWidth = selectionLineWidth; 
+                    ctx.setLineDash([4 * selectionLineWidth, 2 * selectionLineWidth]); // Dashes also need to scale
+                    ctx.strokeRect(-selectionLineWidth, -selectionLineWidth, width + 2*selectionLineWidth, height + 2*selectionLineWidth); // Slightly offset rect
                     ctx.setLineDash([]);
                 }
-                ctx.restore();
+                ctx.restore(); // Restore to before this specific symmetric instance's transforms
             }
         }
      };
     
     const drawSymmetricPath = (
         ctx: CanvasRenderingContext2D,
-        canvas: HTMLCanvasElement,
-        pathData: Path,
+        pathData: Path, // points are in world coordinates
         currentSymmetrySettings: SymmetrySettings,
         isTemporaryShape: boolean,
-        currentFramePulseOffset: number
+        currentFramePulseOffset: number // world unit offset
     ) => {
-        const { points: originalPoints, color, lineWidth, fillColor } = pathData;
+        const { points: originalPoints, color, lineWidth, fillColor } = pathData; // lineWidth is world units
         const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
         
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
         const numAxes = currentSymmetrySettings.rotationalAxes > 0 ? currentSymmetrySettings.rotationalAxes : 1;
         const isRotContext = numAxes > 1;
 
-        const actualLineWidthOffset = isTemporaryShape ? 0 : currentFramePulseOffset;
+        const actualLineWidthOffset = isTemporaryShape ? 0 : currentFramePulseOffset; // world units
 
         for (let i = 0; i < numAxes; i++) {
            const angle = (i * 2 * Math.PI) / numAxes;
           
-           const baseTransformedPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, 0,0,false,false, isRotContext));
+           const baseTransformedPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, false, false, isRotContext));
            drawFunc(ctx, baseTransformedPath, color, lineWidth, actualLineWidthOffset, fillColor);
 
            if (currentSymmetrySettings.mirrorX) {
-             const mirroredXPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, canvas.width, 0, true, false, isRotContext));
+             const mirroredXPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, true, false, isRotContext));
              drawFunc(ctx, mirroredXPath, color, lineWidth, actualLineWidthOffset, fillColor);
            }
            if (currentSymmetrySettings.mirrorY) {
-             const mirroredYPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, 0, canvas.height, false, true, isRotContext));
+             const mirroredYPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, false, true, isRotContext));
              drawFunc(ctx, mirroredYPath, color, lineWidth, actualLineWidthOffset, fillColor);
            }
            if (currentSymmetrySettings.mirrorX && currentSymmetrySettings.mirrorY) {
-               const mirroredXYPath = originalPoints.map(p => transformSymmetricPoint(p, centerX, centerY, angle, canvas.width, canvas.height, true, true, isRotContext));
+               const mirroredXYPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, true, true, isRotContext));
                drawFunc(ctx, mirroredXYPath, color, lineWidth, actualLineWidthOffset, fillColor);
            }
         }
@@ -502,18 +608,15 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
 
     const drawSymmetricText = (
         ctx: CanvasRenderingContext2D,
-        canvas: HTMLCanvasElement,
-        textData: CanvasText,
+        textData: CanvasText, // x,y are world coordinates, fontSize is world units
         currentSymmetrySettings: SymmetrySettings
     ) => {
         const { text, x, y, fontFamily, fontSize, fontWeight, fontStyle, color, textAlign, textBaseline } = textData;
-        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+        ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`; // fontSize is world units
         ctx.fillStyle = color;
         ctx.textAlign = textAlign;
         ctx.textBaseline = textBaseline;
 
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
         const numAxes = currentSymmetrySettings.rotationalAxes > 0 ? currentSymmetrySettings.rotationalAxes : 1;
         const isRotContext = numAxes > 1;
 
@@ -526,24 +629,16 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             if (currentSymmetrySettings.mirrorX && currentSymmetrySettings.mirrorY) mirrorsToApply.push({ mx: true, my: true });
 
             for (const mirror of mirrorsToApply) {
-                ctx.save();
-                let transformedX = x;
-                let transformedY = y;
-
-                if (mirror.mx) transformedX = canvas.width - x;
-                if (mirror.my) transformedY = canvas.height - y;
-
-                if (isRotContext) {
-                    const translatedX = transformedX - centerX;
-                    const translatedY = transformedY - centerY;
-                    const cosA = Math.cos(angle);
-                    const sinA = Math.sin(angle);
-                    transformedX = translatedX * cosA - translatedY * sinA + centerX;
-                    transformedY = translatedX * sinA + translatedY * cosA + centerY;
-                }
-                // Note: True text content mirroring (flipping the text itself) would require ctx.scale(-1, 1) etc.
+                ctx.save(); // Save context with view + anim transforms
+                
+                // Calculate the transformed world position for this symmetric instance
+                const transformedPt = transformSymmetricPoint({x,y}, initialWorldCenter.x, initialWorldCenter.y, angle, mirror.mx, mirror.my, isRotContext);
+                
+                // Text content mirroring (flipping the text itself) would require additional ctx.scale and adjustments to x,y based on textAlign.
+                // For now, just position based on transformedPt.
+                // If textAlign is 'center' or 'right', mirroring X will require more complex logic to keep the text visually mirrored.
                 // This implementation mirrors the text's origin point.
-                ctx.fillText(text, transformedX, transformedY);
+                ctx.fillText(text, transformedPt.x, transformedPt.y);
                 ctx.restore();
             }
         }
@@ -559,20 +654,29 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       const deltaTime = time - lastAnimationTime.current;
       lastAnimationTime.current = time;
 
+      // Clear canvas in screen space (before any transforms)
+      ctx.save();
       ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
 
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
+      // Apply view transform (pan and zoom)
+      ctx.save();
+      ctx.translate(canvasViewTransform.pan.x, canvasViewTransform.pan.y);
+      ctx.scale(canvasViewTransform.zoom, canvasViewTransform.zoom);
+
+      // Animation transforms (pulsing, spinning, global scaling) applied in world space centered around initialWorldCenter
+      const animCenterX = initialWorldCenter.x;
+      const animCenterY = initialWorldCenter.y;
 
        if (animationSettings.isPulsing) {
          const pulseCycle = (time / (1000 / (animationSettings.pulseSpeed / 2))) % (2 * Math.PI);
-         globalPulseOffset.current = Math.cos(pulseCycle) * animationSettings.pulseIntensity;
+         globalPulseOffset.current = Math.cos(pulseCycle) * animationSettings.pulseIntensity; // This is a world unit offset
        } else {
          globalPulseOffset.current = 0;
        }
 
-      let currentScaleFactor = 1;
+      let currentScaleFactor = 1; // Animation scale factor
       if (animationSettings.isScaling) {
          const scaleCycle = (time / (1000 / (animationSettings.scaleSpeed / 2))) % (2 * Math.PI);
          currentScaleFactor = 1 + Math.sin(scaleCycle) * animationSettings.scaleIntensity;
@@ -597,29 +701,31 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             totalRotation.current = 0;
             lastSpinDirectionChangeTime.current = 0; 
        }
-       const currentRotationAngle = totalRotation.current;
+       const currentRotationAngle = totalRotation.current; // Animation rotation
 
-      ctx.save(); 
-      ctx.translate(centerX, centerY);
+      ctx.save(); // Save context with view transform
+      // Apply animation transforms (centered around world's initial center)
+      ctx.translate(animCenterX, animCenterY);
       if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
       if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
-      ctx.translate(-centerX, -centerY);
+      ctx.translate(-animCenterX, -animCenterY);
 
+      // Draw elements that are subject to animation
       paths.forEach(pathData => {
         if (!pathData.excludeFromAnimation) {
           const pathSpecificPulseOffset = animationSettings.isPulsing ? globalPulseOffset.current : 0;
           if (pathData.isFixedShape) {
             drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, pathSpecificPulseOffset, pathData.fillColor);
           } else {
-            drawSymmetricPath(ctx, canvas, pathData, symmetrySettings, false, pathSpecificPulseOffset);
+            drawSymmetricPath(ctx, pathData, symmetrySettings, false, pathSpecificPulseOffset);
           }
         }
       });
       images.forEach(imgData => {
-        // Assuming images are not excludable from animation for now
         const htmlImg = loadedHtmlImages[imgData.id];
         if (htmlImg && htmlImg.complete && htmlImg.naturalWidth > 0) {
-          drawSymmetricImage(ctx, canvas, htmlImg, imgData, symmetrySettings, imgData.id === selectedImageId);
+          // Assuming images are not excludable from animation for now. If they were, add a check here.
+          drawSymmetricImage(ctx, htmlImg, imgData, symmetrySettings, imgData.id === selectedImageId);
         }
       });
       texts.forEach(textData => {
@@ -631,19 +737,20 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
                 ctx.textBaseline = textData.textBaseline;
                 ctx.fillText(textData.text, textData.x, textData.y);
             } else {
-                drawSymmetricText(ctx, canvas, textData, symmetrySettings);
+                drawSymmetricText(ctx, textData, symmetrySettings);
             }
         }
       });
-      ctx.restore(); 
+      ctx.restore(); // Restore from animation transforms (back to just view transform)
 
+      // Draw elements excluded from animation (still subject to view transform)
       paths.forEach(pathData => {
         if (pathData.excludeFromAnimation) {
           const staticLineWidthOffset = 0; 
           if (pathData.isFixedShape) {
             drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, staticLineWidthOffset, pathData.fillColor);
           } else {
-            drawSymmetricPath(ctx, canvas, pathData, symmetrySettings, false, staticLineWidthOffset);
+            drawSymmetricPath(ctx, pathData, symmetrySettings, false, staticLineWidthOffset);
           }
         }
       });
@@ -656,21 +763,29 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
             if (textData.isFixedShape) {
                 ctx.fillText(textData.text, textData.x, textData.y);
             } else {
-                // Symmetry still applies for excluded from animation if not fixed
-                drawSymmetricText(ctx, canvas, textData, symmetrySettings);
+                drawSymmetricText(ctx, textData, symmetrySettings);
             }
         }
       });
       
+      // Draw current path (preview) - subject to view and animation transforms
       if (isDrawing && currentPath.length > 0 && !isFillModeActive && shapeSettings.currentShape !== 'text') {
           const isShapePreviewLine = shapeSettings.currentShape !== 'freehand';
           const tempPreviewPath: Path = {
-              points: currentPath,
+              points: currentPath, // world coordinates
               color: drawingTools.strokeColor,
-              lineWidth: drawingTools.lineWidth,
+              lineWidth: drawingTools.lineWidth, // world units
               isFixedShape: shapeSettings.isFixedShape,
               excludeFromAnimation: shapeSettings.excludeFromAnimation
           };
+
+          ctx.save(); // Save context with view transform
+          if (!tempPreviewPath.excludeFromAnimation) {
+            ctx.translate(animCenterX, animCenterY);
+            if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
+            if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
+            ctx.translate(-animCenterX, -animCenterY);
+          }
 
           const previewPulseOffset = isShapePreviewLine ? 0 
                                      : (animationSettings.isPulsing && !tempPreviewPath.excludeFromAnimation) ? globalPulseOffset.current
@@ -680,10 +795,13 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
               const drawFunc = isShapePreviewLine ? drawTemporaryShapeLine : drawSinglePath;
               drawFunc(ctx, tempPreviewPath.points, tempPreviewPath.color, tempPreviewPath.lineWidth, previewPulseOffset, tempPreviewPath.fillColor);
           } else {
-              drawSymmetricPath(ctx, canvas, tempPreviewPath, symmetrySettings, isShapePreviewLine, previewPulseOffset);
+              drawSymmetricPath(ctx, tempPreviewPath, symmetrySettings, isShapePreviewLine, previewPulseOffset);
           }
+          ctx.restore(); // Restore from temporary anim transform for preview
       }
       
+      ctx.restore(); // Restore from view transform
+
       const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
       const shouldAnimate = animationSettings.isPulsing || animationSettings.isScaling || animationSettings.isSpinning || isLoadingImages;
       if (shouldAnimate) {
@@ -707,6 +825,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         if (parent.clientWidth > 0 && parent.clientHeight > 0) {
             canvas.width = parent.clientWidth;
             canvas.height = parent.clientHeight;
+            // mainCanvasDimensions in AppClient will be updated by its own observer
             renderCanvas(); 
         }
       });
@@ -725,7 +844,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]); 
+    }, [backgroundColor]); // Re-render on bg change, pan/zoom will trigger via their own effects
 
      useEffect(() => {
        const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
@@ -740,8 +859,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
        } else if (!shouldAnimate && animationFrameId.current) {
          cancelAnimationFrame(animationFrameId.current);
          animationFrameId.current = null;
-         renderCanvas(); 
-       } else if (!animationFrameId.current) {
+         renderCanvas(); // One final render without animation
+       } else if (!animationFrameId.current) { // If no animation running, still ensure re-render on prop changes
          renderCanvas();
        }
 
@@ -752,10 +871,10 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
          }
        };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [paths, images, texts, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, textSettings, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId, isFillModeActive]);
+     }, [paths, images, texts, loadedHtmlImages, symmetrySettings, animationSettings, drawingTools, textSettings, isDrawing, currentPath, backgroundColor, shapeSettings, selectedImageId, isFillModeActive, canvasViewTransform, initialWorldCenter]);
 
 
-    const canvasCursor = isFillModeActive ? 'copy' : (isDraggingImage ? 'grabbing' : (shapeSettings.currentShape === 'text' ? 'text' : 'crosshair'));
+    const canvasCursor = isPanning ? 'grabbing' : (isFillModeActive ? 'copy' : (isDraggingImage ? 'grabbing' : (shapeSettings.currentShape === 'text' ? 'text' : 'crosshair')));
 
     return (
       <canvas
@@ -763,11 +882,12 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={finishDrawing}
-        onMouseLeave={finishDrawing} 
+        onMouseLeave={finishDrawing} // Important for mouse up outside canvas
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={finishDrawing}
-        className="h-full w-full touch-none bg-transparent"
+        onWheel={handleWheel} // For mouse wheel zoom
+        className="h-full w-full touch-none bg-transparent" // touch-none is important for touch panning/zooming
         style={{ cursor: canvasCursor }}
         data-ai-hint="abstract art images text"
       />
