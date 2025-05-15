@@ -1,3 +1,6 @@
+
+"use client";
+
 import React, { useRef, useEffect, useMemo } from 'react';
 import { Stickman, Part } from '../types/stickman';
 import { GameItem, EquippedItem, Weapon, Accessory } from '../types/game';
@@ -40,7 +43,7 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
             const overlayPartData = overlayPoseData[partId];
             const partToBlend = blendedParts.find(p => p.id === partId);
 
-            if (partToBlend && overlayPartData) {
+            if (partToBlend && overlayPoseData) {
                 // Simple override for now - can implement actual blending later
                 Object.assign(partToBlend, overlayPartData);
             }
@@ -209,7 +212,7 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
         drawStickman(context, stickman);
     });
 
-  }, [stickmen, width, height, currentTime]); // Redraw when stickmen data or time changes
+  }, [stickmen, width, height, currentTime, itemMap]); // Redraw when stickmen data or time changes. Added itemMap to dependencies.
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -268,3 +271,5 @@ const StickmanCanvas: React.FC<StickmanCanvasProps> = ({
 };
 
 export default StickmanCanvas;
+
+    
