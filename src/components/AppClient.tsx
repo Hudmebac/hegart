@@ -15,7 +15,7 @@ import { DrawingCanvas } from './canvas/DrawingCanvas';
 
 import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ThemeToggle } from '@/components/theme-toggle';
+import ThemeToggle from '@/components/theme-toggle'; // Changed to default import
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -825,7 +825,7 @@ export default function AppClient() {
               </DialogDescription>
             </DialogHeader>
              <div className="flex justify-center items-center my-4 aspect-video w-full max-w-sm mx-auto">
-                <Image src="/welcome.png" alt="HegArt Welcome Image" width={400} height={225} className="rounded-md shadow-lg w-full h-full object-cover" />
+                <Image src="/welcome.png" alt="HegArt Welcome Image" width={400} height={225} className="rounded-md shadow-lg w-full h-full object-cover" data-ai-hint="abstract art" />
             </div>
             <DialogFooter>
               <Button onClick={() => setShowWelcomeDialog(false)}>Get Started!</Button>
