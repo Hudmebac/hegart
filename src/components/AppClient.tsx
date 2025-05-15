@@ -19,7 +19,7 @@ import ThemeToggle from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle, ZoomIn, ZoomOut, RefreshCw as ResetViewIcon } from 'lucide-react';
+import { Menu, Pin, PinOff, Shapes as ShapesIcon, Palette as PaletteIcon, Image as ImageIconLucide, Wand2 as SymmetryIcon, Zap as AnimationIcon, SlidersHorizontal, Presentation as PreviewIconLucide, ListCollapse, Type as TextIcon, HelpCircle, ZoomIn, ZoomOut, RefreshCw as ResetViewIcon, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -120,6 +120,7 @@ const initialCanvasViewTransform: CanvasViewTransform = { pan: { x: 0, y: 0 }, z
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
+const PAN_STEP = 50;
 
 
 export default function AppClient() {
@@ -648,11 +649,12 @@ export default function AppClient() {
     setActiveSections(prevActiveSections => {
         const newActive = new Set(prevActiveSections);
         if (sectionName === 'all') {
-            if (newActive.has('all')) { 
+            if (newActive.has('all') || newActive.size === controlPanelSections.length) { // If "all" is active OR all individual are active
                 newActive.clear(); 
             } else { 
                 newActive.clear();
-                newActive.add('all');
+                controlPanelSections.forEach(s => newActive.add(s.name));
+                newActive.add('all'); // Add 'all' marker
             }
         } else { 
             newActive.delete('all'); 
@@ -662,14 +664,16 @@ export default function AppClient() {
                 newActive.add(sectionName as ControlSectionId); 
             }
         }
-        newSectionsSize = newActive.size;
+        newSectionsSize = newActive.size > 0 && newActive.has('all') ? controlPanelSections.length : newActive.size;
+        if (newActive.size > 0 && newActive.size < controlPanelSections.length) newActive.delete('all');
+
         return newActive;
     });
 
     if (isMobile) {
         if (newSectionsSize > 0) {
             setIsMobileSidebarOpen(true);
-        } else if (newSectionsSize === 0 && activeSections.size > 0) { // only close if it *was* open due to sections
+        } else if (newSectionsSize === 0 && activeSections.size > 0) { 
            setIsMobileSidebarOpen(false);
         }
     }
@@ -690,6 +694,20 @@ export default function AppClient() {
     const newPanX = centerX - worldCenterX * newZoom;
     const newPanY = centerY - worldCenterY * newZoom;
     setCanvasViewTransform({ pan: { x: newPanX, y: newPanY }, zoom: newZoom });
+  };
+  
+  const handleManualPan = (direction: 'up' | 'down' | 'left' | 'right') => {
+    setCanvasViewTransform(prev => {
+        let newPanX = prev.pan.x;
+        let newPanY = prev.pan.y;
+        switch (direction) {
+            case 'up': newPanY += PAN_STEP; break;
+            case 'down': newPanY -= PAN_STEP; break;
+            case 'left': newPanX += PAN_STEP; break;
+            case 'right': newPanX -= PAN_STEP; break;
+        }
+        return { ...prev, pan: { x: newPanX, y: newPanY } };
+    });
   };
 
   const handleResetView = () => {
@@ -806,9 +824,6 @@ export default function AppClient() {
     if (isMobile) {
         setIsMobileSidebarOpen(newOpenState);
     } else {
-        // For desktop, this function might be called by the Sidebar component itself if it has internal collapse triggers.
-        // We primarily control desktop visibility via isSidebarPinned and isSidebarHovered.
-        // If it's being closed and it was pinned, unpin it.
         if (!newOpenState && isSidebarPinned) {
             setIsSidebarPinned(false);
         }
@@ -934,10 +949,10 @@ export default function AppClient() {
         </header>
         <div className="flex flex-1 overflow-hidden relative">
           <Sidebar
-            className="border-r z-40" // Ensure sidebar visual is above canvas but potentially below modals
-            collapsible={isMobile ? "none" : "icon"} // "icon" for desktop collapse to icons
-            open={sidebarActualOpenState} // Controls if sidebar is 'expanded' or 'collapsed' state for its internal styling
-            onOpenChange={sidebarOnOpenChangeHandler} // For mobile sheet primarily
+            className="border-r z-40"
+            collapsible={isMobile ? "none" : "icon"} 
+            open={sidebarActualOpenState} 
+            onOpenChange={sidebarOnOpenChangeHandler} 
             side="left"
             onMouseEnter={() => {
               if (!isMobile && !isSidebarPinned && activeSections.size > 0) { 
@@ -965,7 +980,6 @@ export default function AppClient() {
               "flex-1 overflow-auto p-0 relative h-full transition-[padding-left] duration-200 ease-linear",
               !isMobile && isSidebarPinned && sidebarIsVisuallyExpanded && activeSections.size > 0 ? "pl-[var(--sidebar-width)]" : "",
               !isMobile && isSidebarPinned && (!sidebarIsVisuallyExpanded || activeSections.size === 0) ? "pl-[var(--sidebar-width-icon)]" : ""
-              // When unpinned (!isSidebarPinned), padding-left is 0 (default), allowing sidebar to overlay.
             )}
           >
              <div className="relative w-full h-full overflow-hidden">
@@ -993,31 +1007,72 @@ export default function AppClient() {
                   onCanvasViewTransformChange={handleCanvasViewTransformChange}
                   initialMainCanvasDimensions={mainCanvasDimensions}
                 />
-                <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1 bg-background/50 p-1 rounded-md shadow-md">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="outline" size="icon" onClick={() => handleManualZoom('in')} className="h-8 w-8">
-                                <ZoomIn className="h-4 w-4" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left"><p>Zoom In</p></TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="outline" size="icon" onClick={() => handleManualZoom('out')} className="h-8 w-8">
-                                <ZoomOut className="h-4 w-4" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left"><p>Zoom Out</p></TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="outline" size="icon" onClick={handleResetView} className="h-8 w-8">
-                                <ResetViewIcon className="h-4 w-4" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left"><p>Reset View</p></TooltipContent>
-                    </Tooltip>
+                <div className="absolute bottom-4 right-4 z-20 flex items-end gap-2 bg-background/50 p-1 rounded-md shadow-md">
+                    {/* Column for Pan Arrows */}
+                    <div className="flex flex-col items-center gap-0.5">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={() => handleManualPan('up')} className="h-7 w-7">
+                                    <ArrowUp className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left"><p>Pan Up</p></TooltipContent>
+                        </Tooltip>
+                        <div className="flex gap-0.5">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('left')} className="h-7 w-7">
+                                        <ArrowLeft className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left"><p>Pan Left</p></TooltipContent>
+                            </Tooltip>
+                            <div className="w-7 h-7"></div> {/* Spacer for center */}
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('right')} className="h-7 w-7">
+                                        <ArrowRight className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left"><p>Pan Right</p></TooltipContent>
+                            </Tooltip>
+                        </div>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={() => handleManualPan('down')} className="h-7 w-7">
+                                    <ArrowDown className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left"><p>Pan Down</p></TooltipContent>
+                        </Tooltip>
+                    </div>
+                    {/* Column for Zoom Controls */}
+                    <div className="flex flex-col gap-1">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={() => handleManualZoom('in')} className="h-8 w-8">
+                                    <ZoomIn className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left"><p>Zoom In</p></TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={() => handleManualZoom('out')} className="h-8 w-8">
+                                    <ZoomOut className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left"><p>Zoom Out</p></TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="outline" size="icon" onClick={handleResetView} className="h-8 w-8">
+                                    <ResetViewIcon className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="left"><p>Reset View</p></TooltipContent>
+                        </Tooltip>
+                    </div>
                 </div>
              </div>
           </main>
@@ -1038,3 +1093,4 @@ export default function AppClient() {
     </SidebarProvider>
   );
 }
+
