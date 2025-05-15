@@ -440,7 +440,8 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         strokeColor: string, 
         lineWidth: number, 
         currentLineWidthOffset: number, 
-        fillColor?: string | null 
+        fillColor?: string | null,
+        usePreviewStyle: boolean = false
     ) => {
       if (pathPoints.length === 0) return;
       const effectiveLineWidth = lineWidth + currentLineWidthOffset; 
@@ -459,9 +460,32 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       if (pathPoints.length > 2 && isClosedShapeByDefault) {
            ctx.closePath(); 
       }
+      
+      let actualFillColor = fillColor;
+      if (usePreviewStyle && fillColor) {
+        if (fillColor.startsWith('#') && fillColor.length === 7) { // #RRGGBB
+            actualFillColor = fillColor + '80'; // Add 50% alpha
+        } else if (fillColor.startsWith('#') && fillColor.length === 9) { // #RRGGBBAA
+            actualFillColor = fillColor.substring(0, 7) + '80'; // Replace alpha with 50%
+        } else {
+            // For other color formats like 'rgba(r,g,b,a)' or named colors,
+            // a more complex parsing would be needed. For simplicity, we'll use a default preview alpha.
+            // This part could be enhanced. For now, just make it slightly transparent if possible.
+            // This fallback is not perfect but avoids errors.
+            try {
+                const tempCtx = document.createElement('canvas').getContext('2d')!;
+                tempCtx.fillStyle = fillColor;
+                const baseColor = tempCtx.fillStyle; // Gets #RRGGBB from named or other formats
+                if (baseColor.startsWith('#') && baseColor.length === 7) {
+                     actualFillColor = baseColor + '80';
+                }
+            } catch (e) { /* ignore if color parsing fails for preview */ }
+        }
+      }
 
-      if (fillColor) {
-        ctx.fillStyle = fillColor;
+
+      if (actualFillColor) {
+        ctx.fillStyle = actualFillColor;
         ctx.fill();
       }
 
@@ -470,20 +494,14 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         ctx.lineWidth = effectiveLineWidth; 
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        if (usePreviewStyle) {
+            ctx.setLineDash([5 / canvasViewTransform.zoom, 5 / canvasViewTransform.zoom]);
+        }
         ctx.stroke();
+        if (usePreviewStyle) {
+            ctx.setLineDash([]);
+        }
       }
-    };
-
-    const drawTemporaryShapeLine = (ctx: CanvasRenderingContext2D, path: Point[], color: string, lineWidth: number) => {
-        if (path.length !== 2) return; 
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        ctx.lineTo(path[1].x, path[1].y);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1 / canvasViewTransform.zoom, lineWidth * 0.5);  
-        ctx.setLineDash([5 / canvasViewTransform.zoom, 5 / canvasViewTransform.zoom]);
-        ctx.stroke();
-        ctx.setLineDash([]);
     };
 
     const drawSymmetricImage = (
@@ -551,34 +569,31 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         ctx: CanvasRenderingContext2D,
         pathData: Path, 
         currentSymmetrySettings: SymmetrySettings,
-        isTemporaryShape: boolean,
+        usePreviewStyle: boolean, // Changed from isTemporaryShape
         currentFramePulseOffset: number 
     ) => {
         const { points: originalPoints, color, lineWidth, fillColor } = pathData; 
-        const drawFunc = isTemporaryShape ? drawTemporaryShapeLine : drawSinglePath;
         
         const numAxes = currentSymmetrySettings.rotationalAxes > 0 ? currentSymmetrySettings.rotationalAxes : 1;
         const isRotContext = numAxes > 1;
-
-        const actualLineWidthOffset = isTemporaryShape ? 0 : currentFramePulseOffset; 
 
         for (let i = 0; i < numAxes; i++) {
            const angle = (i * 2 * Math.PI) / numAxes;
           
            const baseTransformedPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, false, false, isRotContext));
-           drawFunc(ctx, baseTransformedPath, color, lineWidth, actualLineWidthOffset, fillColor);
+           drawSinglePath(ctx, baseTransformedPath, color, lineWidth, currentFramePulseOffset, fillColor, usePreviewStyle);
 
            if (currentSymmetrySettings.mirrorX) {
              const mirroredXPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, true, false, isRotContext));
-             drawFunc(ctx, mirroredXPath, color, lineWidth, actualLineWidthOffset, fillColor);
+             drawSinglePath(ctx, mirroredXPath, color, lineWidth, currentFramePulseOffset, fillColor, usePreviewStyle);
            }
            if (currentSymmetrySettings.mirrorY) {
              const mirroredYPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, false, true, isRotContext));
-             drawFunc(ctx, mirroredYPath, color, lineWidth, actualLineWidthOffset, fillColor);
+             drawSinglePath(ctx, mirroredYPath, color, lineWidth, currentFramePulseOffset, fillColor, usePreviewStyle);
            }
            if (currentSymmetrySettings.mirrorX && currentSymmetrySettings.mirrorY) {
                const mirroredXYPath = originalPoints.map(p => transformSymmetricPoint(p, initialWorldCenter.x, initialWorldCenter.y, angle, true, true, isRotContext));
-               drawFunc(ctx, mirroredXYPath, color, lineWidth, actualLineWidthOffset, fillColor);
+               drawSinglePath(ctx, mirroredXYPath, color, lineWidth, currentFramePulseOffset, fillColor, usePreviewStyle);
            }
         }
     };
@@ -636,7 +651,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       ctx.scale(canvasViewTransform.zoom, canvasViewTransform.zoom);
 
       // Draw Center Indicator
-      if (initialMainCanvasDimensions.width > 0 && initialMainCanvasDimensions.height > 0) { // Only draw if dimensions are valid
+      if (initialMainCanvasDimensions.width > 0 && initialMainCanvasDimensions.height > 0) {
           const indicatorSize = 10 / canvasViewTransform.zoom; 
           const indicatorLineWidth = 1 / canvasViewTransform.zoom; 
           ctx.save();
@@ -699,7 +714,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         if (!pathData.excludeFromAnimation) {
           const pathSpecificPulseOffset = animationSettings.isPulsing ? globalPulseOffset.current : 0;
           if (pathData.isFixedShape) {
-            drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, pathSpecificPulseOffset, pathData.fillColor);
+            drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, pathSpecificPulseOffset, pathData.fillColor, false);
           } else {
             drawSymmetricPath(ctx, pathData, symmetrySettings, false, pathSpecificPulseOffset);
           }
@@ -730,7 +745,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         if (pathData.excludeFromAnimation) {
           const staticLineWidthOffset = 0; 
           if (pathData.isFixedShape) {
-            drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, staticLineWidthOffset, pathData.fillColor);
+            drawSinglePath(ctx, pathData.points, pathData.color, pathData.lineWidth, staticLineWidthOffset, pathData.fillColor, false);
           } else {
             drawSymmetricPath(ctx, pathData, symmetrySettings, false, staticLineWidthOffset);
           }
@@ -751,34 +766,53 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
       });
       
       if (isDrawing && currentPath.length > 0 && !isFillModeActive && shapeSettings.currentShape !== 'text') {
-          const isShapePreviewLine = shapeSettings.currentShape !== 'freehand';
-          const tempPreviewPath: Path = {
-              points: currentPath, 
-              color: drawingTools.strokeColor,
-              lineWidth: drawingTools.lineWidth, 
-              isFixedShape: shapeSettings.isFixedShape,
-              excludeFromAnimation: shapeSettings.excludeFromAnimation
-          };
-
-          ctx.save(); 
-          if (!tempPreviewPath.excludeFromAnimation) {
+        let pointsForCurrentDrawing: Point[];
+        let isDrawingFullShapePreview = false;
+    
+        if (shapeSettings.currentShape === 'freehand') {
+            pointsForCurrentDrawing = currentPath;
+        } else { // It's a predefined shape
+            if (currentPath.length === 2) { // Start and end points available
+                pointsForCurrentDrawing = drawShape(shapeSettings.currentShape, currentPath[0], currentPath[1], initialMainCanvasDimensions.width, initialMainCanvasDimensions.height);
+                isDrawingFullShapePreview = true;
+            } else { // Only start point, or not enough points yet
+                pointsForCurrentDrawing = currentPath; 
+            }
+        }
+    
+        const tempPreviewPath: Path = {
+            points: pointsForCurrentDrawing,
+            color: drawingTools.strokeColor,
+            lineWidth: drawingTools.lineWidth,
+            fillColor: (isDrawingFullShapePreview && 
+                        shapeSettings.currentShape !== 'line' && 
+                        shapeSettings.currentShape !== 'arrow' && 
+                        shapeSettings.currentShape !== 'checkMark' &&
+                        drawingTools.fillColor)
+                       ? (drawingTools.fillColor.length === 9 ? drawingTools.fillColor.substring(0,7) + '80' : drawingTools.fillColor + '80') 
+                       : undefined,
+            isFixedShape: shapeSettings.isFixedShape,
+            excludeFromAnimation: shapeSettings.excludeFromAnimation,
+        };
+    
+        ctx.save(); 
+        if (!tempPreviewPath.excludeFromAnimation) { // Current drawing is not subject to animation transforms usually
             ctx.translate(animCenterX, animCenterY);
             if (animationSettings.isSpinning) ctx.rotate(currentRotationAngle);
             if (animationSettings.isScaling) ctx.scale(currentScaleFactor, currentScaleFactor);
             ctx.translate(-animCenterX, -animCenterY);
-          }
+        }
+        
+        const previewPulseOffset = (animationSettings.isPulsing && !tempPreviewPath.excludeFromAnimation && shapeSettings.currentShape === 'freehand') 
+                                   ? globalPulseOffset.current 
+                                   : 0; // Pulse only for freehand preview for now, shapes are dashed
 
-          const previewPulseOffset = isShapePreviewLine ? 0 
-                                     : (animationSettings.isPulsing && !tempPreviewPath.excludeFromAnimation) ? globalPulseOffset.current
-                                     : 0;
-
-          if (tempPreviewPath.isFixedShape) {
-              const drawFunc = isShapePreviewLine ? drawTemporaryShapeLine : drawSinglePath;
-              drawFunc(ctx, tempPreviewPath.points, tempPreviewPath.color, tempPreviewPath.lineWidth, previewPulseOffset, tempPreviewPath.fillColor);
-          } else {
-              drawSymmetricPath(ctx, tempPreviewPath, symmetrySettings, isShapePreviewLine, previewPulseOffset);
-          }
-          ctx.restore(); 
+        if (tempPreviewPath.isFixedShape) {
+            drawSinglePath(ctx, tempPreviewPath.points, tempPreviewPath.color, tempPreviewPath.lineWidth, previewPulseOffset, tempPreviewPath.fillColor, true /* usePreviewStyle */);
+        } else {
+            drawSymmetricPath(ctx, tempPreviewPath, symmetrySettings, true /* usePreviewStyle */, previewPulseOffset);
+        }
+        ctx.restore(); 
       }
       
       ctx.restore(); 
@@ -824,7 +858,7 @@ export const DrawingCanvas = forwardRef<HTMLCanvasElement, DrawingCanvasProps>(
         }
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backgroundColor]); 
+    }, [backgroundColor, initialMainCanvasDimensions]); // Added initialMainCanvasDimensions
 
      useEffect(() => {
        const isLoadingImages = images.some(img => !loadedHtmlImages[img.id]?.complete);
