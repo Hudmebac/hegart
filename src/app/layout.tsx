@@ -48,7 +48,7 @@ export default function RootLayout({
  </div>
  </header>
           {children}
-          <footer className="flex flex-col sm:flex-row justify-between items-center p-4 w-full text-center sm:text-left text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
+          <footer className="flex flex-col sm:flex-row justify-center items-center p-4 w-full text-center sm:text-left text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
  <div className="flex items-center gap-4">
             <p>#HegArt © 2025 Craig Heggie. All rights reserved.</p>
             <a href="https://heggie.netlify.app/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
