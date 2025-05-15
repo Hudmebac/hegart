@@ -854,7 +854,7 @@ export default function AppClient() {
               <span className="sr-only">Toggle Menu</span>
             </Button>
             <HegArtLogo className="h-8 w-auto hidden sm:block" />
-             <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider hidden lg:block ml-2">#HegArt</h1>
+             <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider hidden sm:block whitespace-nowrap">#HegArt</h1>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
