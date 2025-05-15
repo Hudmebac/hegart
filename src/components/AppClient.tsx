@@ -15,7 +15,7 @@ import { DrawingCanvas } from './canvas/DrawingCanvas';
 
 import { Sidebar, SidebarInset, SidebarProvider, SidebarContent } from '@/components/ui/sidebar';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import ThemeToggle from '@/components/theme-toggle'; // Changed to default import
+import ThemeToggle from '@/components/theme-toggle';
 import { HegArtLogo } from '@/components/icons/HegArtLogo';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -58,7 +58,7 @@ export interface AnimationSettings {
 
 export interface DrawingTools {
   strokeColor: string;
-  fillColor: string; 
+  fillColor: string;
   lineWidth: number;
   backgroundColor: string;
 }
@@ -96,7 +96,7 @@ const initialAnimationSettings: AnimationSettings = {
   isSpinning: false, spinSpeed: 30, spinDirectionChangeFrequency: 5,
 };
 const initialDrawingToolsBase: Omit<DrawingTools, 'strokeColor' | 'backgroundColor' | 'fillColor'> = { lineWidth: 5 };
-const initialShapeSettings: ShapeSettings = { 
+const initialShapeSettings: ShapeSettings = {
   currentShape: 'freehand',
   isFixedShape: false,
   excludeFromAnimation: false,
@@ -125,7 +125,7 @@ export default function AppClient() {
   const [animation, setAnimation] = useState<AnimationSettings>(initialAnimationSettings);
   const [tools, setTools] = useState<DrawingTools>(() => {
     const isSystemDark = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const defaultIsDark = false; 
+    const defaultIsDark = false;
     const isDarkMode = isSystemDark || defaultIsDark;
     return {
       ...initialDrawingToolsBase,
@@ -141,11 +141,11 @@ export default function AppClient() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarPinned, setIsSidebarPinned] = useState(true);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
-  
-  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>(['all']));
+
+  const [activeSections, setActiveSections] = useState<Set<HeaderControlSelectionId>>(() => new Set<HeaderControlSelectionId>()); // Default to no sections active
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
   const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
-  
+
   const { theme, systemTheme } = useTheme();
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -207,7 +207,7 @@ export default function AppClient() {
     };
      setPaths((prevPaths) => [...prevPaths, augmentedPath]);
      setCurrentPath([]);
-     setSelectedImageId(null); 
+     setSelectedImageId(null);
   }, [snapshotState, shapeSettings.isFixedShape, shapeSettings.excludeFromAnimation]);
 
   const handleTextAdd = useCallback((newText: CanvasText) => {
@@ -218,11 +218,11 @@ export default function AppClient() {
 
   const handleFillPath = useCallback((pathIndex: number, fillColor: string) => {
     snapshotState();
-    setPaths(prevPaths => prevPaths.map((p, idx) => 
+    setPaths(prevPaths => prevPaths.map((p, idx) =>
       idx === pathIndex ? { ...p, fillColor } : p
     ));
     toast({ title: "Shape Filled", description: "The selected shape has been filled." });
-  }, [toast, snapshotState]); 
+  }, [toast, snapshotState]);
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
@@ -235,7 +235,7 @@ export default function AppClient() {
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             const canvasWidth = mainCanvasDimensions.width || 800;
             const canvasHeight = mainCanvasDimensions.height || 600;
-            
+
             let w = img.naturalWidth;
             let h = img.naturalHeight;
 
@@ -252,7 +252,7 @@ export default function AppClient() {
                 h = maxDim;
               }
             }
-            
+
             w = Math.min(w, canvasWidth * 0.9);
             h = Math.min(h, canvasHeight * 0.9);
 
@@ -268,8 +268,8 @@ export default function AppClient() {
             };
             snapshotState();
             setImages(prev => [...prev, newImage]);
-            setSelectedImageId(newImage.id); 
-            setIsFillModeActive(false); 
+            setSelectedImageId(newImage.id);
+            setIsFillModeActive(false);
             toast({ title: "Image Added", description: "The image has been added to the canvas. Click and drag to move." });
           } else {
             toast({ variant: "destructive", title: "Image Error", description: "Invalid image dimensions after loading." });
@@ -300,7 +300,7 @@ export default function AppClient() {
 
   const handleImageSelect = useCallback((id: string | null) => {
     setSelectedImageId(id);
-    if (id) setIsFillModeActive(false); 
+    if (id) setIsFillModeActive(false);
   }, []);
 
 
@@ -322,27 +322,27 @@ export default function AppClient() {
         setImages(previousState.images);
         setTexts(previousState.texts);
         setHistory((prevHistory) => prevHistory.slice(0, -1));
-        
-        setCurrentPath([]); 
-        setSelectedImageId(null); 
+
+        setCurrentPath([]);
+        setSelectedImageId(null);
         toast({ title: "Undo Successful", description: "Last action undone." });
     } else {
       toast({ title: "Nothing to Undo", description: "Canvas is at earliest state." });
     }
   }, [history, toast]);
-  
+
   const canUndo = history.length > 0;
 
 
   const handleSaveDrawing = useCallback(async () => {
-    setSelectedImageId(null); 
+    setSelectedImageId(null);
     setIsFillModeActive(false);
-    await new Promise(resolve => setTimeout(resolve, 50)); 
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     if (canvasRef.current) {
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
-      
+
       if (!tempCtx) {
         toast({ variant: "destructive", title: "Error", description: "Could not create save context." });
         return;
@@ -363,8 +363,8 @@ export default function AppClient() {
           for (let i = 1; i < pathPoints.length; i++) {
             ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
           }
-          
-          if (pathPoints.length > 2) { 
+
+          if (pathPoints.length > 2) {
             ctx.closePath();
           }
 
@@ -372,8 +372,8 @@ export default function AppClient() {
             ctx.fillStyle = fillColor;
             ctx.fill();
           }
-          
-          if (lineWidth > 0) { 
+
+          if (lineWidth > 0) {
             ctx.strokeStyle = strokeColor;
             ctx.lineWidth = lineWidth;
             ctx.lineCap = 'round';
@@ -464,7 +464,7 @@ export default function AppClient() {
           };
           img.onerror = (err) => {
             console.error("Error loading image for save:", imgData.src, err);
-            resolve(); 
+            resolve();
           };
           img.src = imgData.src;
         });
@@ -488,11 +488,11 @@ export default function AppClient() {
 
         for (let i = 0; i < numAxes; i++) {
             const angle = (i * 2 * Math.PI) / numAxes;
-            
+
             const transformAndDrawText = (originX: number, originY: number, applyMirrorX: boolean, applyMirrorY: boolean) => {
                 let tx = originX;
                 let ty = originY;
-                
+
                 tempCtx.save();
 
                 if (applyMirrorX) {
@@ -501,31 +501,31 @@ export default function AppClient() {
                 if (applyMirrorY) {
                     ty = tempCanvas.height - ty;
                 }
-                
-                if (numAxes > 1) { 
+
+                if (numAxes > 1) {
                     tempCtx.translate(canvasCenterX, canvasCenterY);
                     tempCtx.rotate(angle);
                     tempCtx.translate(-canvasCenterX, -canvasCenterY);
                 }
-                
+
                 let finalDrawX = tx;
                 let finalDrawY = ty;
 
-                if (numAxes > 1) { 
+                if (numAxes > 1) {
                     const translatedForRotX = originX - canvasCenterX;
                     const translatedForRotY = originY - canvasCenterY;
-                    
+
                     let pointToRotateX = originX;
                     let pointToRotateY = originY;
 
                     if(applyMirrorX) pointToRotateX = tempCanvas.width - originX;
                     if(applyMirrorY) pointToRotateY = tempCanvas.height - originY;
-                    
+
                     const tX = pointToRotateX - canvasCenterX;
                     const tY = pointToRotateY - canvasCenterY;
                     finalDrawX = tX * Math.cos(angle) - tY * Math.sin(angle) + canvasCenterX;
                     finalDrawY = tX * Math.sin(angle) + tY * Math.cos(angle) + canvasCenterY;
-                } else { 
+                } else {
                     if(applyMirrorX) finalDrawX = tempCanvas.width - originX;
                     if(applyMirrorY) finalDrawY = tempCanvas.height - originY;
                      if(applyMirrorX && applyMirrorY){
@@ -533,11 +533,11 @@ export default function AppClient() {
                         finalDrawY = tempCanvas.height - originY;
                     }
                 }
-                
+
                 tempCtx.fillText(text, finalDrawX, finalDrawY);
-                tempCtx.restore(); 
+                tempCtx.restore();
             };
-            
+
             transformAndDrawText(x, y, false, false);
             if (symmetry.mirrorX) transformAndDrawText(x, y, true, false);
             if (symmetry.mirrorY) transformAndDrawText(x, y, false, true);
@@ -565,7 +565,7 @@ export default function AppClient() {
     setSymmetry(initialSymmetrySettings);
     setAnimation(initialAnimationSettings);
     setTextSettings(initialTextSettings);
-    
+
     const currentThemeResolved = theme === 'system' ? systemTheme : theme;
     const isDarkMode = currentThemeResolved === 'dark';
     setTools({
@@ -574,23 +574,23 @@ export default function AppClient() {
       fillColor: isDarkMode ? '#FFFFFF40' : '#00000040',
       backgroundColor: isDarkMode ? '#121212' : '#FAFAFA',
     });
-    setShapeSettings(initialShapeSettings); 
-    handleClearCanvas(); 
-    setHistory([]); 
+    setShapeSettings(initialShapeSettings);
+    handleClearCanvas();
+    setHistory([]);
     setSelectedImageId(null);
     setIsFillModeActive(false);
     toast({ title: "Settings Reset", description: "All settings and canvas cleared." });
   }, [theme, systemTheme, handleClearCanvas, toast]);
 
   const handleStartRecording = useCallback(() => {
-    setSelectedImageId(null); 
+    setSelectedImageId(null);
     setIsFillModeActive(false);
     if (!canvasRef.current) {
       toast({ variant: "destructive", title: "Recording Error", description: "Canvas not available." });
       return;
     }
     try {
-      const stream = canvasRef.current.captureStream(30); 
+      const stream = canvasRef.current.captureStream(30);
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
       recordedChunksRef.current = [];
 
@@ -632,23 +632,23 @@ export default function AppClient() {
   }, [isRecording, toast]);
 
   const toggleMobileSidebar = () => setIsMobileSidebarOpen(!isMobileSidebarOpen);
-  
+
   const toggleSidebarPin = () => {
     const newPinnedState = !isSidebarPinned;
     setIsSidebarPinned(newPinnedState);
-    if (newPinnedState) { 
-      setIsSidebarHovered(false); 
+    if (newPinnedState) {
+      setIsSidebarHovered(false);
     }
   };
 
   const toggleFillMode = useCallback(() => {
     setIsFillModeActive(prev => {
         const nextState = !prev;
-        if (nextState) { 
-            setSelectedImageId(null); 
-            setCurrentPath([]); 
+        if (nextState) {
+            setSelectedImageId(null);
+            setCurrentPath([]);
             toast({ title: "Fill Mode Activated", description: "Click on shapes to fill them.", duration: 2000 });
-        } else { 
+        } else {
             toast({ title: "Fill Mode Deactivated", description: "Drawing mode re-enabled.", duration: 2000 });
         }
         return nextState;
@@ -659,43 +659,46 @@ export default function AppClient() {
   const togglePreview = () => setIsPreviewVisible(prev => !prev);
 
   const handleSectionSelect = (sectionName: HeaderControlSelectionId) => {
-    setActiveSections(prev => {
-        const newActive = new Set(prev);
+    let newSectionsSize = 0;
+    setActiveSections(prevActiveSections => {
+        const newActive = new Set(prevActiveSections);
 
         if (sectionName === 'all') {
-            if (newActive.has('all')) { 
-                newActive.delete('all');
-                if (newActive.size === 0) newActive.add('shapes'); 
-            } else { 
+            if (newActive.has('all')) { // Clicked 'all' when 'all' was active
+                newActive.clear(); // Deselect 'all' and clear other selections
+            } else { // Clicked 'all' when 'all' was not active
                 newActive.clear();
                 newActive.add('all');
             }
-        } else { 
-            newActive.delete('all'); 
-
-            if (newActive.has(sectionName)) {
-                newActive.delete(sectionName as ControlSectionId);
-            } else {
-                newActive.add(sectionName as ControlSectionId);
-            }
-
-            if (newActive.size === 0) { 
-                newActive.add('shapes');
+        } else { // Clicked an individual section
+            if (newActive.has('all')) { // If 'all' was active
+                newActive.clear(); // Deactivate 'all'
+                newActive.add(sectionName as ControlSectionId); // Activate the clicked section
+            } else { // 'all' was not active
+                if (newActive.has(sectionName)) { // Clicked an active individual section
+                    newActive.delete(sectionName as ControlSectionId); // Deactivate it
+                } else { // Clicked an inactive individual section
+                    newActive.add(sectionName as ControlSectionId); // Activate it
+                }
             }
         }
+        newSectionsSize = newActive.size;
         return newActive;
     });
 
     if (isMobile) {
-        setIsMobileSidebarOpen(true);
-    } else if (!isSidebarPinned) {
-        setIsSidebarHovered(true); 
+        if (newSectionsSize > 0) {
+            setIsMobileSidebarOpen(true);
+        } else {
+            setIsMobileSidebarOpen(false);
+        }
     }
   };
-  
+
+
   const controlPanelSections: { name: ControlSectionId; label: string; icon: React.ElementType }[] = [
     { name: 'actions', label: 'Actions', icon: SlidersHorizontal },
-    { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon }, 
+    { name: 'shapes', label: 'Shapes & Text', icon: ShapesIcon },
     { name: 'tools', label: 'Drawing Tools', icon: PaletteIcon },
     { name: 'image', label: 'Image Controls', icon: ImageIconLucide },
     { name: 'symmetry', label: 'Symmetry', icon: SymmetryIcon },
@@ -756,7 +759,7 @@ export default function AppClient() {
     }
 
     if (activeSections.size === 0) {
-      return <div className="p-4 text-muted-foreground">Select a control section from the header or "All".</div>;
+      return <div className="p-4 text-muted-foreground text-center">Select a control section from the header icons to display its settings here.</div>;
     }
 
     const componentsToRender: JSX.Element[] = [];
@@ -794,23 +797,33 @@ export default function AppClient() {
     return <div className="space-y-4">{componentsToRender}</div>;
   };
 
-  const sidebarDynamicOpenState = isMobile 
-    ? isMobileSidebarOpen 
-    : (isSidebarPinned || isSidebarHovered);
+  const sidebarActualOpenState = (activeSections.size > 0) &&
+                                 (isMobile ? isMobileSidebarOpen : (isSidebarPinned || isSidebarHovered));
 
-  const sidebarOnOpenChangeHandler = isMobile 
-    ? setIsMobileSidebarOpen 
+  const sidebarOnOpenChangeHandler = isMobile
+    ? setIsMobileSidebarOpen
     : (newOpenState: boolean) => {
         if (!isMobile) {
-          if (!newOpenState && isSidebarPinned) {
+          // Only unpin if the sidebar was closed by user interaction with the sidebar itself (e.g., an Esc key),
+          // not because activeSections became empty.
+          // The Sidebar component itself doesn't differentiate, so this logic might unpin even if closed due to empty sections.
+          // However, if `sidebarActualOpenState` is already false, this `onOpenChange` might not even trigger for "closing".
+          if (!newOpenState && isSidebarPinned && activeSections.size > 0) {
             setIsSidebarPinned(false);
           }
         }
       };
 
+  // Effect to close mobile sidebar if no sections are active
+  useEffect(() => {
+    if (isMobile && activeSections.size === 0 && isMobileSidebarOpen) {
+        setIsMobileSidebarOpen(false);
+    }
+  }, [activeSections, isMobileSidebarOpen, isMobile]);
+
 
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider defaultOpen={sidebarActualOpenState}>
        <TooltipProvider>
         <Dialog open={showWelcomeDialog} onOpenChange={setShowWelcomeDialog}>
           <DialogContent className="sm:max-w-md">
@@ -820,7 +833,7 @@ export default function AppClient() {
                 Welcome to #HegArt!
               </DialogTitle>
               <DialogDescription>
-                Unleash your creativity with symmetric and animated art. Explore the controls in the sidebar and start drawing! All control sections are available, initially collapsed for a clean start.
+                Unleash your creativity with symmetric and animated art. Explore the controls by clicking the header icons to reveal sections in the sidebar. Start drawing!
                  For a quick overview, check out the video below or visit the "How To" page.
               </DialogDescription>
             </DialogHeader>
@@ -847,9 +860,9 @@ export default function AppClient() {
           <div className="flex items-center gap-1 sm:gap-2">
              <Tooltip key={previewHeaderConfig.name}>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant={isPreviewVisible ? "secondary" : "ghost"} 
-                    size="icon" 
+                  <Button
+                    variant={isPreviewVisible ? "secondary" : "ghost"}
+                    size="icon"
                     onClick={togglePreview}
                     aria-pressed={isPreviewVisible}
                   >
@@ -861,9 +874,9 @@ export default function AppClient() {
               </Tooltip>
               <Tooltip key={allControlsHeaderConfig.name}>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant={activeSections.has(allControlsHeaderConfig.name) ? "secondary" : "ghost"} 
-                    size="icon" 
+                  <Button
+                    variant={activeSections.has(allControlsHeaderConfig.name) ? "secondary" : "ghost"}
+                    size="icon"
                     onClick={() => handleSectionSelect(allControlsHeaderConfig.name)}
                     aria-pressed={activeSections.has(allControlsHeaderConfig.name)}
                   >
@@ -876,9 +889,9 @@ export default function AppClient() {
             {controlPanelSections.map(section => (
               <Tooltip key={section.name}>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant={activeSections.has(section.name) ? "secondary" : "ghost"} 
-                    size="icon" 
+                  <Button
+                    variant={activeSections.has(section.name) ? "secondary" : "ghost"}
+                    size="icon"
                     onClick={() => handleSectionSelect(section.name)}
                     aria-pressed={activeSections.has(section.name)}
                   >
@@ -890,7 +903,7 @@ export default function AppClient() {
               </Tooltip>
             ))}
           </div>
-          
+
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -913,15 +926,15 @@ export default function AppClient() {
             <ThemeToggle />
           </div>
         </header>
-        <div className="flex flex-1 overflow-hidden relative"> 
+        <div className="flex flex-1 overflow-hidden relative">
           <Sidebar
             className="border-r z-10"
-            collapsible={isMobile ? "none" : "icon"} 
-            open={sidebarDynamicOpenState}
+            collapsible={isMobile ? "none" : "icon"}
+            open={sidebarActualOpenState}
             onOpenChange={sidebarOnOpenChangeHandler}
             side="left"
             onMouseEnter={() => {
-              if (!isMobile && !isSidebarPinned) {
+              if (!isMobile && !isSidebarPinned && activeSections.size > 0) { // Only allow hover-open if sections are active
                 setIsSidebarHovered(true);
               }
             }}
@@ -932,8 +945,8 @@ export default function AppClient() {
             }}
           >
             <ScrollArea className="h-full">
-              <SidebarContent className="p-0"> 
-                 <div className="p-4 space-y-4"> 
+              <SidebarContent className="p-0">
+                 <div className="p-4 space-y-4">
                   {renderActiveSectionContent()}
                  </div>
               </SidebarContent>
