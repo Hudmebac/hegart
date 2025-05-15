@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Added useRef
 // import AnimationManager from './components/AnimationManager'; // Removed AnimationManager as Timeline is replacing its role
 import StickmanCanvas from './components/StickmanCanvas'; // Assuming StickmanCanvas is imported here
 import { Stickman, AnimationState, Animation, Keyframe, Point, LayerKeyframe } from './types/stickman'; // Added LayerKeyframe
@@ -562,7 +562,9 @@ const App: React.FC = () => { // Added React.FC type
 
     // Game loop / Update logic
     useEffect(() => {
-        let frameId: number;
+        let frameId: number | undefined = undefined;
+        const lastFrameTimestamp = useRef<number | null>(null); // Moved declaration here
+
         if (animationState.isPlaying) {
             const loop = (timestamp: number) => {
                 if (!animationState.isPlaying) return; // Ensure stop if isPlaying becomes false
@@ -582,12 +584,14 @@ const App: React.FC = () => { // Added React.FC type
                 });
                 frameId = requestAnimationFrame(loop);
             };
-            const lastFrameTimestamp = React.useRef<number | null>(null);
+            // const lastFrameTimestamp = React.useRef<number | null>(null); // Original position
             frameId = requestAnimationFrame(loop);
         }
         return () => {
             if (frameId) cancelAnimationFrame(frameId);
-            lastFrameTimestamp.current = null; // Reset on pause/stop
+            if (lastFrameTimestamp.current !== null) { // Check if it was initialized
+                 lastFrameTimestamp.current = null; // Reset on pause/stop
+            }
         };
     }, [animationState.isPlaying, animationState.currentAnimationId, animationState.animations]);
 
