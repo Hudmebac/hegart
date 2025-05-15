@@ -44,21 +44,11 @@ export default function RootLayout({
  </div>
  <div className="flex items-center gap-1">
  <button className="items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-accent hover:text-accent-foreground h-10 w-10 hidden md:inline-flex" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off h-5 w-5"><path d="M12 17v5"></path><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89"></path><path d="m2 2 20 20"></path><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11"></path></svg><span className="sr-only">Unpin Sidebar</span></button><a className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-accent hover:text-accent-foreground h-10 w-10" data-state="closed" href="/how-to"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-help h-5 w-5"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg><span className="sr-only">How to Use #HegArt</span></a>
- <Link href="/stickman-game" passHref>
- <Button variant="outline" size="sm" className="h-10 w-10">
- <Image src="/martial-arts.png" alt="Stickman Game" width={24} height={24} />
- </Button>
- </Link>
   <ThemeToggle />
  </div>
  </header>
           {children}
           <footer className="flex flex-col sm:flex-row justify-between items-center p-4 w-full text-center sm:text-left text-sm text-muted-foreground gap-2 sm:gap-4 border-t">
- <div className="flex items-center gap-4">
-            <Link href="/stickman-game" className="hover:underline">
- Stickman Game
-            </Link>
- </div>
  <div className="flex items-center gap-4">
             <p>#HegArt © 2025 Craig Heggie. All rights reserved.</p>
             <a href="https://heggie.netlify.app/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
