@@ -664,21 +664,21 @@ export default function AppClient() {
         const newActive = new Set(prevActiveSections);
 
         if (sectionName === 'all') {
-            if (newActive.has('all')) { // Clicked 'all' when 'all' was active
-                newActive.clear(); // Deselect 'all' and clear other selections
-            } else { // Clicked 'all' when 'all' was not active
+            if (newActive.has('all')) { 
+                newActive.clear(); 
+            } else { 
                 newActive.clear();
                 newActive.add('all');
             }
-        } else { // Clicked an individual section
-            if (newActive.has('all')) { // If 'all' was active
-                newActive.clear(); // Deactivate 'all'
-                newActive.add(sectionName as ControlSectionId); // Activate the clicked section
-            } else { // 'all' was not active
-                if (newActive.has(sectionName)) { // Clicked an active individual section
-                    newActive.delete(sectionName as ControlSectionId); // Deactivate it
-                } else { // Clicked an inactive individual section
-                    newActive.add(sectionName as ControlSectionId); // Activate it
+        } else { 
+            if (newActive.has('all')) { 
+                newActive.clear(); 
+                newActive.add(sectionName as ControlSectionId); 
+            } else { 
+                if (newActive.has(sectionName)) { 
+                    newActive.delete(sectionName as ControlSectionId); 
+                } else { 
+                    newActive.add(sectionName as ControlSectionId); 
                 }
             }
         }
@@ -804,17 +804,12 @@ export default function AppClient() {
     ? setIsMobileSidebarOpen
     : (newOpenState: boolean) => {
         if (!isMobile) {
-          // Only unpin if the sidebar was closed by user interaction with the sidebar itself (e.g., an Esc key),
-          // not because activeSections became empty.
-          // The Sidebar component itself doesn't differentiate, so this logic might unpin even if closed due to empty sections.
-          // However, if `sidebarActualOpenState` is already false, this `onOpenChange` might not even trigger for "closing".
           if (!newOpenState && isSidebarPinned && activeSections.size > 0) {
             setIsSidebarPinned(false);
           }
         }
       };
 
-  // Effect to close mobile sidebar if no sections are active
   useEffect(() => {
     if (isMobile && activeSections.size === 0 && isMobileSidebarOpen) {
         setIsMobileSidebarOpen(false);
@@ -854,7 +849,7 @@ export default function AppClient() {
               <span className="sr-only">Toggle Menu</span>
             </Button>
             <HegArtLogo className="h-8 w-auto hidden sm:block" />
-             <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider hidden sm:block whitespace-nowrap">#HegArt</h1>
+             <h1 className="font-montserrat text-xl font-bold uppercase tracking-wider sm:block whitespace-nowrap">#HegArt</h1>
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
@@ -934,7 +929,7 @@ export default function AppClient() {
             onOpenChange={sidebarOnOpenChangeHandler}
             side="left"
             onMouseEnter={() => {
-              if (!isMobile && !isSidebarPinned && activeSections.size > 0) { // Only allow hover-open if sections are active
+              if (!isMobile && !isSidebarPinned && activeSections.size > 0) { 
                 setIsSidebarHovered(true);
               }
             }}
@@ -946,9 +941,11 @@ export default function AppClient() {
           >
             <ScrollArea className="h-full">
               <SidebarContent className="p-0">
-                 <div className="p-4 space-y-4">
-                  {renderActiveSectionContent()}
-                 </div>
+                 {sidebarActualOpenState && (
+                    <div className="p-4 space-y-4">
+                      {renderActiveSectionContent()}
+                    </div>
+                  )}
               </SidebarContent>
             </ScrollArea>
           </Sidebar>
