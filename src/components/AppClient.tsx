@@ -414,9 +414,16 @@ export default function AppClient() {
             ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
           }
 
-          if (pathPoints.length > 2) {
-            ctx.closePath();
+          if (pathPoints.length > 2) { // Only close if it's a polygon-like path
+             const isClosedShapeByDefault = shapeSettings.currentShape !== 'line' && 
+                                       shapeSettings.currentShape !== 'arrow' && 
+                                       shapeSettings.currentShape !== 'checkMark' &&
+                                       shapeSettings.currentShape !== 'freehand'; // this check might be too simplistic for saved paths
+             if (isClosedShapeByDefault || (pathPoints.length > 2 && fillColor)) { // Close if it's a shape that typically closes or has fill
+                 ctx.closePath();
+             }
           }
+
 
           if (fillColor) {
             ctx.fillStyle = fillColor;
@@ -578,7 +585,7 @@ export default function AppClient() {
         toast({ variant: "destructive", title: "Save Error", description: "Failed to process elements for saving." });
       }
     }
-  }, [canvasRef, paths, images, texts, tools.backgroundColor, symmetry, mainCanvasDimensions, toast, canvasViewTransform]);
+  }, [canvasRef, paths, images, texts, tools.backgroundColor, symmetry, mainCanvasDimensions, toast, canvasViewTransform, shapeSettings.currentShape]);
 
   const handleResetSettings = useCallback(() => {
     setSymmetry(initialSymmetrySettings);
@@ -678,7 +685,7 @@ export default function AppClient() {
   const handleSectionSelect = (sectionName: HeaderControlSelectionId) => {
     let newSectionsSize = 0;
     setActiveSections(prevActiveSections => {
-        const newActive = new Set<HeaderControlSelectionId>(); // Start fresh for single/all logic
+        const newActive = new Set<HeaderControlSelectionId>(); 
         if (sectionName === 'all') {
             if (prevActiveSections.has('all') || prevActiveSections.size === controlPanelSections.length) {
                  // If "all" is active OR all individual are active, clear all
@@ -687,23 +694,16 @@ export default function AppClient() {
                 newActive.add('all'); 
             }
         } else { 
-            // If an individual section is clicked
-            if (prevActiveSections.has(sectionName as ControlSectionId) && prevActiveSections.size === 1) {
-                // If it's the only active section, deselect it
-            } else if (prevActiveSections.has(sectionName as ControlSectionId) && prevActiveSections.has('all')) {
-                // If 'all' was active, switch to just this one
-                newActive.add(sectionName as ControlSectionId);
-            }
-            else if (prevActiveSections.has(sectionName as ControlSectionId)) {
-                // If it's active among others (but not 'all'), deselect it
+            if (prevActiveSections.has(sectionName as ControlSectionId) && prevActiveSections.has('all')) {
+                 newActive.add(sectionName as ControlSectionId);
+            } else if (prevActiveSections.has(sectionName as ControlSectionId)) {
                 prevActiveSections.forEach(s => {
                     if (s !== sectionName && s !== 'all') newActive.add(s as ControlSectionId);
                 });
             }
             else { 
-                // If it's not active, select it (potentially adding to others, or switching from 'all')
                 if (prevActiveSections.has('all')) {
-                     newActive.add(sectionName as ControlSectionId); // Switch from 'all' to this one
+                     newActive.add(sectionName as ControlSectionId);
                 } else {
                     prevActiveSections.forEach(s => {
                          if (s !== 'all') newActive.add(s as ControlSectionId);
@@ -713,6 +713,14 @@ export default function AppClient() {
             }
         }
         newSectionsSize = newActive.size > 0 && newActive.has('all') ? controlPanelSections.length : newActive.size;
+
+        if (newActive.size === 0 && prevActiveSections.has(sectionName) && prevActiveSections.size === 1) {
+            // This was the last active section, so it is now empty.
+        } else if (newActive.size === 0 && prevActiveSections.has('all') && sectionName === 'all'){
+            // "all" was deselected, resulting in empty.
+        }
+
+
         return newActive;
     });
 
@@ -1091,13 +1099,13 @@ export default function AppClient() {
                   onCanvasViewTransformChange={handleCanvasViewTransformChange}
                   initialMainCanvasDimensions={mainCanvasDimensions}
                 />
-                <div className="absolute bottom-4 right-4 z-20 flex items-end gap-2 bg-background/50 p-1 rounded-md shadow-md">
+                <div className="absolute bottom-4 right-4 z-20 flex items-end gap-2 bg-background/50 p-1.5 rounded-md shadow-md">
                     {/* Column for Pan Arrows */}
                     <div className="flex flex-col items-center gap-0.5">
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="outline" size="icon" onClick={() => handleManualPan('up')} className="h-7 w-7">
-                                    <ArrowUp className="h-4 w-4" />
+                                <Button variant="outline" size="icon" onClick={() => handleManualPan('up')} className="h-8 w-8">
+                                    <ArrowUp className="h-5 w-5" />
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent side="left"><p>Pan Up</p></TooltipContent>
@@ -1105,17 +1113,17 @@ export default function AppClient() {
                         <div className="flex gap-0.5">
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('left')} className="h-7 w-7">
-                                        <ArrowLeft className="h-4 w-4" />
+                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('left')} className="h-8 w-8">
+                                        <ArrowLeft className="h-5 w-5" />
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent side="left"><p>Pan Left</p></TooltipContent>
                             </Tooltip>
-                            <div className="w-7 h-7"></div> {/* Spacer for center */}
+                            <div className="w-8 h-8"></div> {/* Spacer for center */}
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('right')} className="h-7 w-7">
-                                        <ArrowRight className="h-4 w-4" />
+                                    <Button variant="outline" size="icon" onClick={() => handleManualPan('right')} className="h-8 w-8">
+                                        <ArrowRight className="h-5 w-5" />
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent side="left"><p>Pan Right</p></TooltipContent>
@@ -1123,8 +1131,8 @@ export default function AppClient() {
                         </div>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="outline" size="icon" onClick={() => handleManualPan('down')} className="h-7 w-7">
-                                    <ArrowDown className="h-4 w-4" />
+                                <Button variant="outline" size="icon" onClick={() => handleManualPan('down')} className="h-8 w-8">
+                                    <ArrowDown className="h-5 w-5" />
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent side="left"><p>Pan Down</p></TooltipContent>
